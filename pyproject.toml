@@ -1,0 +1,41 @@
+[project]
+name = "research-assistant"
+version = "0.1.0"
+requires-python = ">=3.12, <3.13"
+dependencies = [
+    "httpx>=0.27",
+    "numpy>=1.24",
+    "pydantic>=2.7",
+]
+
+[dependency-groups]
+dev = [
+    "black>=26.5.1",
+    "isort>=9.0.1",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.16.6",
+]
+
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+# Preserve the instructor-provided AI module and smoke tests.
+force-exclude = '(^|/)(ai/|tests/test_ai_smoke\.py$)'
+
+[tool.isort]
+profile = "black"
+line_length = 100
+py_version = 312
+known_first_party = ["ai"]
+extend_skip = ["ai", "tests/test_ai_smoke.py"]
+filter_files = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["ai", "tests/test_ai_smoke.py"]
+force-exclude = true
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
