@@ -13,6 +13,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-install-project
 
 COPY . .
+RUN uv sync --locked
 
 # Run the offline demo by default.
 CMD ["uv", "run", "--locked", "python", "demo_ai.py", "--offline", "--limit", "5"]
