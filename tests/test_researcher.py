@@ -1,6 +1,6 @@
 import pytest
 
-from src.researcher.core.researcher import validate_question
+from researcher.core.researcher import validate_question
 
 
 def test_validate_question_strips_whitespace():
