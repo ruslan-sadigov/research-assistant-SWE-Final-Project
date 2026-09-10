@@ -25,9 +25,6 @@ class SourceOrchestrator:
         self, question: str, selected_sources: list[SourceName], *, use_cache: bool = True
     ) -> CollectionResult:
         """Collect evidence while preserving successful source results."""
-        if use_cache:
-            raise NotImplementedError("Cache integration is not implemented yet.")
-
         started = perf_counter()
 
         # Preserve requested order while avoiding duplicate fetches.
@@ -38,7 +35,10 @@ class SourceOrchestrator:
 
         async with self._ai_service.open_source_client() as client:
             results = await asyncio.gather(
-                *(self._fetch_one(source, question, client=client) for source in selected),
+                *(
+                    self._fetch_one(source, question, client=client, use_cache=use_cache)
+                    for source in selected
+                ),
                 return_exceptions=True,
             )
 
@@ -71,42 +71,57 @@ class SourceOrchestrator:
         question: str,
         *,
         client: httpx.AsyncClient,
+        use_cache: bool,
     ) -> SourceOutcome:
-        """Fetch one source within its deadline."""
+        """Read, fetch, and save one source within a single deadline."""
         started = perf_counter()
         deadline = asyncio.timeout(self._settings.per_source_timeout_seconds)
+        sources: list[Source] | None = None
+        cache_hit = False
+        warnings: list[str] = []
+        status = "failed"
 
         try:
             async with deadline:
-                sources = await self._ai_service.fetch_sources(
-                    source,
-                    question,
-                    client=client,
-                )
+                if use_cache:
+                    try:
+                        sources = await self._cache.get_sources(source, question)
+                        cache_hit = sources is not None
+                    except Exception:
+                        warnings.append(
+                            f"{source} cache could not be read; fetching fresh evidence."
+                        )
 
-                outcome = SourceOutcome(
-                    source=source,
-                    status="ok" if sources else "empty",
-                    sources=sources,
-                    elapsed_seconds=perf_counter() - started,
-                )
+                if sources is None:
+                    sources = await self._ai_service.fetch_sources(source, question, client=client)
+                    if use_cache:
+                        try:
+                            await self._cache.set_sources(source, question, sources)
+                        except Exception:
+                            warnings.append(f"{source} results could not be saved to cache.")
         except TimeoutError:
-            return SourceOutcome(
-                source=source,
-                status="timeout" if deadline.expired() else "failed",
-                elapsed_seconds=perf_counter() - started,
-                warning=(
+            status = "timeout" if deadline.expired() else "failed"
+            if sources is not None:
+                warnings.append(f"{source} cache save exceeded its deadline; evidence retained.")
+            else:
+                warnings.append(
                     f"{source} exceeded its source deadline."
                     if deadline.expired()
                     else f"{source} reported an upstream timeout."
-                ),
-            )
+                )
         except Exception:
-            return SourceOutcome(
-                source=source,
-                status="failed",
-                elapsed_seconds=perf_counter() - started,
-                warning=f"{source} could not retrieve evidence.",
-            )
+            warnings.append(f"{source} could not retrieve evidence.")
 
-        return outcome
+        # A failed or cancelled cache write must not discard fetched evidence.
+        # External cancellation still propagates because it is not an Exception.
+        if sources is not None:
+            status = "ok" if sources else "empty"
+
+        return SourceOutcome(
+            source=source,
+            status=status,
+            sources=sources if sources is not None else [],
+            elapsed_seconds=perf_counter() - started,
+            cache_hit=cache_hit,
+            warning=" ".join(warnings) or None,
+        )

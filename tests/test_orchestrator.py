@@ -1,4 +1,4 @@
-"""Offline behavioral tests for uncached source orchestration."""
+"""Offline behavioral tests for cached and uncached source orchestration."""
 
 import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -75,11 +75,149 @@ class FakeAIService:
         raise AssertionError("The orchestrator must not synthesize answers.")
 
 
-def build(handler, timeout=5):
+def build(handler, timeout=5, cache=None):
     service = FakeAIService(handler)
-    cache = ForbiddenCache()
+    cache = cache if cache is not None else ForbiddenCache()
     settings = Settings(per_source_timeout_seconds=timeout)
     return SourceOrchestrator(settings, service, cache), service, cache
+
+
+class FakeCache:
+    def __init__(self, entries=None, read_error=False, write_error=False, stall=None):
+        self.entries = entries or {}
+        self.read_error = read_error
+        self.write_error = write_error
+        self.stall = stall
+        self.reads = []
+        self.writes = []
+        self.entered = asyncio.Event()
+        self.cancelled = asyncio.Event()
+
+    async def pause(self, operation):
+        if self.stall == operation:
+            self.entered.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                self.cancelled.set()
+
+    async def get_sources(self, source, query):
+        self.reads.append((source, query))
+        await self.pause("read")
+        if self.read_error:
+            raise RuntimeError("Cache unavailable")
+        return self.entries.get(source)
+
+    async def set_sources(self, source, query, sources):
+        self.writes.append((source, query, sources))
+        await self.pause("write")
+        if self.write_error:
+            raise RuntimeError("Cache unavailable")
+        self.entries[source] = sources
+
+
+@pytest.mark.asyncio
+async def test_cache_hits_empty_hits_and_misses_in_one_collection():
+    cache = FakeCache({"wiki": [evidence("wiki")], "arxiv": []})
+
+    async def handler(name):
+        return [evidence(name)]
+
+    orchestrator, service, _ = build(handler, cache=cache)
+    result = await orchestrator.collect_sources(QUESTION, NAMES)
+
+    assert [outcome.cache_hit for outcome in result.outcomes] == [True, True, False]
+    assert [outcome.status for outcome in result.outcomes] == ["ok", "empty", "ok"]
+    assert result.sources == [evidence("wiki"), evidence("web")]
+    assert [name for name, _, _ in service.calls] == ["web"]
+    assert cache.writes == [("web", QUESTION, [evidence("web")])]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("empty", [False, True])
+@pytest.mark.parametrize("write_error", [False, True])
+async def test_cache_read_failure_fetches_and_preserves_results(empty, write_error):
+    cache = FakeCache(read_error=True, write_error=write_error)
+    sources = [] if empty else [evidence("wiki")]
+
+    async def handler(name):
+        return sources
+
+    orchestrator, _, _ = build(handler, cache=cache)
+    result = await orchestrator.collect_sources(QUESTION, ["wiki"])
+
+    assert result.sources == sources
+    outcome = result.outcomes[0]
+    assert outcome.status == ("empty" if empty else "ok")
+    assert not outcome.cache_hit
+    assert "could not be read" in outcome.warning
+    assert ("could not be saved" in outcome.warning) == write_error
+    assert cache.writes == [("wiki", QUESTION, sources)]
+
+
+@pytest.mark.asyncio
+async def test_failed_fetch_is_not_cached():
+    cache = FakeCache()
+
+    async def handler(name):
+        raise RuntimeError("Fetch failed")
+
+    orchestrator, _, _ = build(handler, cache=cache)
+    result = await orchestrator.collect_sources(QUESTION, ["wiki"])
+
+    assert result.outcomes[0].status == "failed"
+    assert cache.writes == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["read", "write"])
+@pytest.mark.parametrize("empty", [False, True])
+async def test_cache_deadline_retains_only_completed_fetches(operation, empty):
+    cache = FakeCache(stall=operation)
+    sources = [] if empty else [evidence("wiki")]
+
+    async def handler(name):
+        return sources
+
+    orchestrator, service, _ = build(handler, timeout=0.05, cache=cache)
+    async with asyncio.timeout(2):
+        result = await orchestrator.collect_sources(QUESTION, ["wiki"])
+
+    outcome = result.outcomes[0]
+    assert cache.cancelled.is_set()
+    assert outcome.warning
+    assert service.client.is_closed
+    if operation == "read":
+        assert outcome.status == "timeout"
+        assert service.calls == cache.writes == []
+    else:
+        assert outcome.status == ("empty" if empty else "ok")
+        assert result.sources == sources
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["read", "write"])
+async def test_external_cancellation_during_cache_access_propagates(operation):
+    cache = FakeCache(stall=operation)
+
+    async def handler(name):
+        return [evidence(name)]
+
+    orchestrator, service, _ = build(handler, cache=cache)
+    task = asyncio.create_task(orchestrator.collect_sources(QUESTION, ["wiki"]))
+    try:
+        async with asyncio.timeout(2):
+            await cache.entered.wait()
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+    finally:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+
+    assert cache.cancelled.is_set()
+    assert service.client.is_closed
 
 
 @pytest.mark.asyncio
