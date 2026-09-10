@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -12,7 +13,7 @@ from researcher.models import CacheEntry
 from researcher.storage.cache_store import (
     CacheStoreError,
     InMemoryCacheStore,
-    JsonFileCacheStore,
+    SqliteCacheStore,
 )
 
 NOW = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
@@ -84,23 +85,23 @@ class TestInMemoryCacheStore:
         await store.close()
 
 
-class TestJsonFileCacheStore:
+class TestSqliteCacheStore:
     @pytest.mark.asyncio
-    async def test_missing_file_is_an_empty_cache(self, tmp_path: Path) -> None:
-        store = JsonFileCacheStore(tmp_path / "cache.json")
+    async def test_missing_database_is_an_empty_cache(self, tmp_path: Path) -> None:
+        store = SqliteCacheStore(tmp_path / "cache.db")
 
         assert await store.get_entry("wiki", "anything") is None
 
     @pytest.mark.asyncio
     async def test_entries_survive_a_new_store_instance(self, tmp_path: Path) -> None:
-        path = tmp_path / "cache.json"
+        path = tmp_path / "cache.db"
         entry = make_entry()
 
-        writer = JsonFileCacheStore(path)
+        writer = SqliteCacheStore(path)
         await writer.upsert_entry(entry)
         await writer.close()
 
-        reader = JsonFileCacheStore(path)
+        reader = SqliteCacheStore(path)
         restored = await reader.get_entry("wiki", entry.query_key)
 
         assert restored == entry
@@ -109,49 +110,68 @@ class TestJsonFileCacheStore:
 
     @pytest.mark.asyncio
     async def test_creates_missing_parent_directories(self, tmp_path: Path) -> None:
-        path = tmp_path / "nested" / "dir" / "cache.json"
-        store = JsonFileCacheStore(path)
+        path = tmp_path / "nested" / "dir" / "cache.db"
+        store = SqliteCacheStore(path)
 
         await store.upsert_entry(make_entry())
 
         assert path.exists()
 
     @pytest.mark.asyncio
-    async def test_rewriting_a_key_leaves_one_entry(self, tmp_path: Path) -> None:
-        path = tmp_path / "cache.json"
-        store = JsonFileCacheStore(path)
+    async def test_rewriting_a_key_leaves_one_row(self, tmp_path: Path) -> None:
+        path = tmp_path / "cache.db"
+        store = SqliteCacheStore(path)
 
         await store.upsert_entry(make_entry(titles=("First",)))
         await store.upsert_entry(make_entry(titles=("Second",)))
         await store.close()
 
-        reopened = JsonFileCacheStore(path)
+        reopened = SqliteCacheStore(path)
         stored = await reopened.get_entry("wiki", "what is photosynthesis")
         assert stored is not None
         assert [source.title for source in stored.sources] == ["Second"]
+        await reopened.close()
+
+        with sqlite3.connect(path) as conn:
+            (count,) = conn.execute(
+                "SELECT COUNT(*) FROM cache_entries WHERE source = ? AND query_key = ?",
+                ("wiki", "what is photosynthesis"),
+            ).fetchone()
+        assert count == 1
 
     @pytest.mark.asyncio
-    async def test_writes_leave_no_temporary_files_behind(self, tmp_path: Path) -> None:
-        store = JsonFileCacheStore(tmp_path / "cache.json")
+    async def test_writes_leave_no_journal_files_behind(self, tmp_path: Path) -> None:
+        store = SqliteCacheStore(tmp_path / "cache.db")
 
         await store.upsert_entry(make_entry())
+        await store.close()
 
-        assert [path.name for path in tmp_path.iterdir()] == ["cache.json"]
+        assert [path.name for path in tmp_path.iterdir()] == ["cache.db"]
 
     @pytest.mark.asyncio
-    async def test_unreadable_file_raises_a_store_error(self, tmp_path: Path) -> None:
-        path = tmp_path / "cache.json"
-        path.write_text("{ this is not json", encoding="utf-8")
-        store = JsonFileCacheStore(path)
+    async def test_unreadable_database_raises_a_store_error(self, tmp_path: Path) -> None:
+        path = tmp_path / "cache.db"
+        path.write_text("this is not a sqlite database", encoding="utf-8")
+        store = SqliteCacheStore(path)
 
         with pytest.raises(CacheStoreError):
             await store.get_entry("wiki", "anything")
 
     @pytest.mark.asyncio
-    async def test_unexpected_document_shape_raises_a_store_error(self, tmp_path: Path) -> None:
-        path = tmp_path / "cache.json"
-        path.write_text('{"version": 1, "entries": [{"source": "wiki"}]}', encoding="utf-8")
-        store = JsonFileCacheStore(path)
+    async def test_unexpected_row_shape_raises_a_store_error(self, tmp_path: Path) -> None:
+        path = tmp_path / "cache.db"
+        with sqlite3.connect(path) as conn:
+            conn.execute(
+                "CREATE TABLE cache_entries "
+                "(source TEXT NOT NULL, query_key TEXT NOT NULL, payload TEXT NOT NULL, "
+                "PRIMARY KEY (source, query_key))"
+            )
+            conn.execute(
+                "INSERT INTO cache_entries VALUES (?, ?, ?)",
+                ("wiki", "anything", '{"source": "wiki"}'),
+            )
+            conn.commit()
+        store = SqliteCacheStore(path)
 
         with pytest.raises(CacheStoreError):
             await store.get_entry("wiki", "anything")

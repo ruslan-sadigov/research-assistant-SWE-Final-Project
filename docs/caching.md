@@ -62,57 +62,54 @@ structurally -- no inheritance required, which is what makes test fakes easy.
 
 - **`InMemoryCacheStore`** -- a dictionary keyed by `(source, query_key)`, used
   by the test suite and by runs that do not need persistence.
-- **`JsonFileCacheStore`** -- the same map written to one JSON document, so the
-  cache survives restarts with no database to install or run.
+- **`SqliteCacheStore`** -- the same entries in a local SQLite database, so the
+  cache survives restarts with no external database service to install or run.
 
 PostgreSQL is optional under the assignment and was deliberately not used: it
 would add a service to run, a driver to configure and a schema to migrate, in
 exchange for a cache holding at most three entries per distinct question.
 
-### JSON document format
+### SQLite schema
 
-```json
-{
-  "version": 1,
-  "entries": [
-    {
-      "source": "wiki",
-      "query_key": "what is photosynthesis",
-      "sources": [
-        {
-          "title": "Photosynthesis",
-          "url": "https://en.wikipedia.org/wiki/Photosynthesis",
-          "snippet": "...",
-          "origin": "wikipedia"
-        }
-      ],
-      "created_at": "2026-01-01T12:00:00Z",
-      "expires_at": "2026-01-02T12:00:00Z"
-    }
-  ]
-}
+One table, primary-keyed on `(source, query_key)` so a write to an existing key
+overwrites in place instead of accumulating rows:
+
+```sql
+CREATE TABLE IF NOT EXISTS cache_entries (
+    source TEXT NOT NULL,
+    query_key TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    PRIMARY KEY (source, query_key)
+)
 ```
 
-`version` exists so a future format change is detected rather than misparsed.
-A missing file is an empty cache, not an error. An unreadable file raises
-`CacheStoreError`.
+`source` and `query_key` are real columns because `get_entry` looks up by them;
+`payload` holds the whole `CacheEntry` (including `created_at` / `expires_at`)
+as JSON via pydantic's own `model_dump_json` / `model_validate_json`, so the
+row never drifts from the model. `PRAGMA user_version` is stamped with a schema
+version on connect -- the same role the old JSON document's `version` field
+played: detect a future format change instead of misreading it.
 
-Writes are atomic: the document is written to a temporary file in the same
-directory and moved into place with `os.replace`, which is atomic on both POSIX
-and Windows, so an interrupted write cannot leave a corrupt cache. File I/O
-runs through `asyncio.to_thread` so it does not block the event loop.
+A missing database file is an empty cache, not an error -- `sqlite3.connect`
+creates it lazily. A file that exists but is not a valid SQLite database, or a
+row whose `payload` no longer parses as a `CacheEntry`, raises `CacheStoreError`.
+
+Writes go through a single connection reused for the store's lifetime, with an
+`asyncio.Lock` serialising access and every call wrapped in `asyncio.to_thread`
+-- `sqlite3` is synchronous and a connection is not safe to share across
+concurrently-running tasks.
 
 ## Usage
 
 ```python
 from researcher.services.cache import SourceCache
-from researcher.storage.cache_store import InMemoryCacheStore, JsonFileCacheStore
+from researcher.storage.cache_store import InMemoryCacheStore, SqliteCacheStore
 
 # Ephemeral (tests, one-off runs)
 cache = SourceCache(InMemoryCacheStore(), ttl_seconds=settings.cache_ttl_seconds)
 
 # Persistent across runs
-store = JsonFileCacheStore(".cache/sources.json")
+store = SqliteCacheStore(".cache/sources.db")
 cache = SourceCache(store, ttl_seconds=settings.cache_ttl_seconds)
 
 cached = await cache.get_sources("wiki", question)
@@ -138,8 +135,8 @@ broken cache costs speed rather than the run.
 
 Entries expire by TTL only; there is no eviction command. If the provider or
 the per-source result limit changes, cached entries no longer describe what the
-application would fetch today -- delete the cache file, or point
-`JsonFileCacheStore` at a different path. The `version` field and the composite
+application would fetch today -- delete the cache database, or point
+`SqliteCacheStore` at a different path. `PRAGMA user_version` and the composite
 key give a natural place to add per-setting namespacing later.
 
 Choose a cache path outside version control; `.cache/` is already covered by
@@ -147,20 +144,20 @@ Choose a cache path outside version control; `.cache/` is already covered by
 
 ## Tests
 
-`tests/test_cache.py` and `tests/test_cache_store.py` -- 38 offline tests, no
+`tests/test_cache.py` and `tests/test_cache_store.py` -- offline tests, no
 network, no filesystem dependency beyond `tmp_path`. They cover the
 normalisation table (including `C++`, `C#` and `A*`), cached-empty versus miss,
 TTL boundaries with an injected clock, per-source isolation, defensive copying,
-JSON persistence across store instances, atomic writes, and `CacheStoreError`
-on unreadable files.
+persistence across store instances, upsert overwriting a row rather than
+duplicating it, and `CacheStoreError` on an unreadable database or a row that
+no longer validates as a `CacheEntry`.
 
 ## Known limitations
 
-- Every write rewrites the whole JSON document. Fine for a small, short-lived
-  cache; SQLite would be the next step for anything larger.
-- The `asyncio.Lock` serialises tasks within one process. Two processes sharing
-  a cache file cannot corrupt it -- writes are atomic -- but one can lose the
-  other's entry.
+- The `asyncio.Lock` serialises tasks within one process. SQLite's own file
+  locking protects against corruption if two processes share a cache database,
+  but one process can still lose the other's entry on a near-simultaneous write
+  to the same key.
 - One TTL for all three sources, although arXiv results age far more slowly
   than web search results. Per-source TTLs are the obvious refinement.
-- No size bound or eviction policy; the file grows until deleted.
+- No size bound or eviction policy; the database grows until deleted.
