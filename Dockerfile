@@ -1,19 +1,52 @@
-FROM python:3.12-slim
+# Dependency installation and package building.
+FROM python:3.12-slim AS builder
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
 WORKDIR /app
 
-ENV UV_COMPILE_BYTECODE=1 \
-    UV_LINK_MODE=copy \
+ENV UV_LINK_MODE=copy \
+    UV_PYTHON_DOWNLOADS=never \
     PYTHONUNBUFFERED=1
 
-# Install dependencies before copying code, improving build caching.
 COPY pyproject.toml uv.lock ./
-RUN uv sync --locked --no-install-project
+
+# Cache dependency installation separately from application changes.
+RUN uv sync --locked --no-dev --no-install-project
+
+COPY ai/ ./ai/
+COPY src/ ./src/
+
+# Install the application normally, without an editable source link.
+RUN uv sync --locked --no-dev --no-editable
+
+
+# Development tools and tests.
+FROM builder AS test
 
 COPY . .
-RUN uv sync --locked
+RUN uv sync --locked --no-editable
 
-# Run the offline demo by default.
-CMD ["uv", "run", "--locked", "python", "demo_ai.py", "--offline", "--limit", "5"]
+CMD ["uv", "run", "--locked", "--no-sync", "python", "-m", "pytest", "-v"]
+
+
+# Application runtime without development tools or uv.
+FROM python:3.12-slim AS runtime
+
+ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+RUN useradd --create-home appuser
+
+COPY --from=builder /app/.venv /app/.venv
+
+# Temporary entry point until the real research CLI is integrated.
+COPY demo_ai.py ./
+COPY data/ ./data/
+
+USER appuser
+
+CMD ["python", "demo_ai.py", "--offline", "--limit", "5"]
