@@ -1,6 +1,7 @@
 """Offline behavioral tests for cached and uncached source orchestration."""
 
 import asyncio
+import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
 
@@ -14,6 +15,7 @@ from researcher.models import SourceName
 
 QUESTION = "What is photosynthesis?"
 NAMES: list[SourceName] = ["wiki", "arxiv", "web"]
+LOGGER_NAME = "researcher.concurrency.orchestrator"
 
 
 def evidence(name: SourceName, url: str | None = None) -> Source:
@@ -376,3 +378,76 @@ async def test_source_cancellation_is_not_reported_as_a_failure():
         await orchestrator.collect_sources(QUESTION, ["wiki"], use_cache=False)
 
     assert service.closed and service.client.is_closed
+
+
+@pytest.mark.asyncio
+async def test_logs_cache_hit_and_collection_summary(caplog):
+    cache = FakeCache({"wiki": [evidence("wiki")]})
+
+    async def handler(name):
+        raise AssertionError("A cache hit must not fetch.")
+
+    orchestrator, service, _ = build(handler, cache=cache)
+
+    with caplog.at_level(logging.DEBUG, logger=LOGGER_NAME):
+        await orchestrator.collect_sources(QUESTION, ["wiki"])
+
+    assert service.calls == []
+    assert "cache hit: source=wiki" in caplog.text
+    assert "source=wiki status=ok cache_hit=True results=1" in caplog.text
+    assert "requested_sources=1 unique_results=1" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_logs_failure_without_exposing_exception_text(caplog):
+    sensitive_text = "api_key=fake-sensitive-value"
+
+    async def handler(name):
+        raise RuntimeError(sensitive_text)
+
+    orchestrator, _, _ = build(handler)
+
+    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+        result = await orchestrator.collect_sources(QUESTION, ["wiki"], use_cache=False)
+
+    assert result.outcomes[0].status == "failed"
+    assert "source=wiki stage=fetch error_type=RuntimeError" in caplog.text
+    assert sensitive_text not in caplog.text
+
+    records = [record for record in caplog.records if record.name == LOGGER_NAME]
+    assert records
+    assert all(record.exc_info is None for record in records)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["read", "write"])
+async def test_logs_cache_timeout_stage(caplog, operation):
+    cache = FakeCache(stall=operation)
+
+    async def handler(name):
+        return [evidence(name)]
+
+    orchestrator, _, _ = build(handler, timeout=0.05, cache=cache)
+
+    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+        async with asyncio.timeout(2):
+            await orchestrator.collect_sources(QUESTION, ["wiki"])
+
+    assert f"source=wiki stage=cache_{operation} deadline_expired=True" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_logs_cache_failures_and_preserves_evidence(caplog):
+    cache = FakeCache(read_error=True, write_error=True)
+
+    async def handler(name):
+        return [evidence(name)]
+
+    orchestrator, _, _ = build(handler, cache=cache)
+
+    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+        result = await orchestrator.collect_sources(QUESTION, ["wiki"])
+
+    assert "cache read failed: source=wiki" in caplog.text
+    assert "cache write failed: source=wiki" in caplog.text
+    assert result.sources == [evidence("wiki")]
