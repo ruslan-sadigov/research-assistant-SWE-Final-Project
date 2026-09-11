@@ -4,7 +4,7 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from contextlib import AbstractAsyncContextManager
-from typing import TypeVar
+from typing import Protocol, TypeVar
 
 import httpx
 
@@ -125,6 +125,18 @@ class RetryingTransport(httpx.AsyncBaseTransport):
         await self._transport.aclose()
 
 
+class SourceFetcher(Protocol):
+    """Common arguments accepted by the supplied source fetchers."""
+
+    def __call__(
+        self,
+        query: str,
+        *,
+        client: httpx.AsyncClient,
+        max_results: int,
+    ) -> Awaitable[list[Source]]: ...
+
+
 class AIService:
     def __init__(
         self,
@@ -149,7 +161,11 @@ class AIService:
         client: httpx.AsyncClient,
     ) -> list[Source]:
         """Use public AI fetchers; only DuckDuckGo ignores the shared client."""
-        fetchers = {"wiki": ai.fetch_wikipedia, "arxiv": ai.fetch_arxiv, "web": ai.fetch_web}
+        fetchers: dict[str, SourceFetcher] = {
+            "wiki": ai.fetch_wikipedia,
+            "arxiv": ai.fetch_arxiv,
+            "web": ai.fetch_web,
+        }
         if source not in fetchers:
             raise ValueError(f"Unknown source: {source}")
 
