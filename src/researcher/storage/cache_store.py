@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import sqlite3
+import threading
 from pathlib import Path
 
 from pydantic import ValidationError
@@ -81,49 +82,82 @@ class SqliteCacheStore:
 
     `sqlite3` is synchronous, so every database call runs through
     `asyncio.to_thread`. A single connection is reused for the store's
-    lifetime and all access is serialised by an `asyncio.Lock`, the same
-    approach `InMemoryCacheStore` and the previous JSON-file store used --
-    one `sqlite3.Connection` is not safe to use concurrently from multiple
-    tasks.
+    lifetime. A thread lock covers complete database operations, including
+    initialization and closure. Cancelling an await does not stop its worker,
+    so serialization must live inside the worker rather than the coroutine.
+    A cancelled write may still commit. close() permanently closes the store.
     """
 
     def __init__(self, path: str | Path) -> None:
         self._path = Path(path)
-        self._lock = asyncio.Lock()
+        self._lock = threading.Lock()
         self._conn: sqlite3.Connection | None = None
+        self._closed = False
 
     async def get_entry(self, source: SourceName, query_key: str) -> CacheEntry | None:
-        async with self._lock:
-            conn = await self._ensure_connection()
-            return await asyncio.to_thread(self._select, conn, source, query_key)
+        return await asyncio.to_thread(self._get_entry, source, query_key)
+
+    def _get_entry(self, source: SourceName, query_key: str) -> CacheEntry | None:
+        with self._lock:
+            return self._select(self._ensure_connection(), source, query_key)
 
     async def upsert_entry(self, entry: CacheEntry) -> None:
-        async with self._lock:
-            conn = await self._ensure_connection()
-            await asyncio.to_thread(self._upsert, conn, entry)
+        snapshot = entry.model_copy(deep=True)
+        await asyncio.to_thread(self._upsert_entry, snapshot)
+
+    def _upsert_entry(self, entry: CacheEntry) -> None:
+        with self._lock:
+            self._upsert(self._ensure_connection(), entry)
 
     async def close(self) -> None:
-        async with self._lock:
-            if self._conn is not None:
-                await asyncio.to_thread(self._conn.close)
-                self._conn = None
+        await asyncio.to_thread(self._close)
 
-    async def _ensure_connection(self) -> sqlite3.Connection:
+    def _close(self) -> None:
+        with self._lock:
+            if self._conn is not None:
+                try:
+                    self._conn.close()
+                except sqlite3.Error as exc:
+                    raise CacheStoreError("could not close cache database") from exc
+                self._conn = None
+            self._closed = True
+
+    def _ensure_connection(self) -> sqlite3.Connection:
+        if self._closed:
+            raise CacheStoreError("cache store is closed")
         if self._conn is None:
-            self._conn = await asyncio.to_thread(self._connect)
+            self._conn = self._connect()
         return self._conn
 
     def _connect(self) -> sqlite3.Connection:
+        conn = None
         try:
             self._path.parent.mkdir(parents=True, exist_ok=True)
             conn = sqlite3.connect(self._path, check_same_thread=False)
-            conn.execute(_CREATE_TABLE)
-            # Mirrors the old JSON document's "version" field: a place to
-            # detect a future schema change instead of misreading it.
-            conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
-            conn.commit()
+            with conn:
+                # Serialize initialization against other store instances.
+                conn.execute("BEGIN IMMEDIATE")
+                (version,) = conn.execute("PRAGMA user_version").fetchone()
+                if version not in (0, _SCHEMA_VERSION):
+                    raise CacheStoreError(f"unsupported cache schema version: {version}")
+                if version == 0:
+                    conn.execute(_CREATE_TABLE)
+                columns = conn.execute("PRAGMA table_info(cache_entries)").fetchall()
+                shape = [(row[1], row[2].upper(), row[3], row[5]) for row in columns]
+                if shape != [
+                    ("source", "TEXT", 1, 1),
+                    ("query_key", "TEXT", 1, 2),
+                    ("payload", "TEXT", 1, 0),
+                ]:
+                    raise CacheStoreError("incompatible cache table schema")
+                if version == 0:
+                    conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
             return conn
-        except sqlite3.Error as exc:
+        except (OSError, sqlite3.Error, CacheStoreError) as exc:
+            if conn is not None:
+                conn.close()
+            if isinstance(exc, CacheStoreError):
+                raise
             raise CacheStoreError(f"could not open cache database {self._path}") from exc
 
     def _select(
@@ -150,14 +184,14 @@ class SqliteCacheStore:
 
     def _upsert(self, conn: sqlite3.Connection, entry: CacheEntry) -> None:
         try:
-            conn.execute(
-                """
-                INSERT INTO cache_entries (source, query_key, payload)
-                VALUES (?, ?, ?)
-                ON CONFLICT (source, query_key) DO UPDATE SET payload = excluded.payload
-                """,
-                (entry.source, entry.query_key, entry.model_dump_json()),
-            )
-            conn.commit()
+            with conn:
+                conn.execute(
+                    """
+                    INSERT INTO cache_entries (source, query_key, payload)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT (source, query_key) DO UPDATE SET payload = excluded.payload
+                    """,
+                    (entry.source, entry.query_key, entry.model_dump_json()),
+                )
         except sqlite3.Error as exc:
             raise CacheStoreError(f"could not write cache database {self._path}") from exc

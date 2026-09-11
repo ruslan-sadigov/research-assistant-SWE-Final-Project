@@ -86,18 +86,27 @@ CREATE TABLE IF NOT EXISTS cache_entries (
 `source` and `query_key` are real columns because `get_entry` looks up by them;
 `payload` holds the whole `CacheEntry` (including `created_at` / `expires_at`)
 as JSON via pydantic's own `model_dump_json` / `model_validate_json`, so the
-row never drifts from the model. `PRAGMA user_version` is stamped with a schema
-version on connect -- the same role the old JSON document's `version` field
-played: detect a future format change instead of misreading it.
+payload is validated against the model on read. Initialization reads
+`PRAGMA user_version` and rejects unsupported versions without overwriting
+them. Version 0 databases are initialized (or adopted if their existing cache
+table matches); version 1 databases must already have the expected table.
+Table columns and primary-key structure are checked before use.
 
 A missing database file is an empty cache, not an error -- `sqlite3.connect`
 creates it lazily. A file that exists but is not a valid SQLite database, or a
 row whose `payload` no longer parses as a `CacheEntry`, raises `CacheStoreError`.
 
-Writes go through a single connection reused for the store's lifetime, with an
-`asyncio.Lock` serialising access and every call wrapped in `asyncio.to_thread`
--- `sqlite3` is synchronous and a connection is not safe to share across
-concurrently-running tasks.
+Database operations run in `asyncio.to_thread`. A `threading.Lock` inside the
+worker serializes initialization, reads, full write transactions, and closure
+on a single reused connection. Cancelling the awaiting task cannot release
+that lock while its worker still uses the connection. Transaction context
+managers commit successful writes and roll back failed writes or commits.
+
+Cancellation stops waiting; it does not forcibly stop SQLite. A cancelled
+write may still commit. `close()` waits for the active database operation and
+permanently closes the store; subsequent operations raise `CacheStoreError`.
+Calls queued concurrently with close may finish first or be rejected, but
+cannot reopen a closed store. A new store instance is needed to reopen it.
 
 ## Usage
 
@@ -152,12 +161,19 @@ persistence across store instances, upsert overwriting a row rather than
 duplicating it, and `CacheStoreError` on an unreadable database or a row that
 no longer validates as a `CacheEntry`.
 
+Regression tests cover concurrent store instances, cancellation during writes
+and initialization, subsequent reads/writes/closure, rollback after a deferred
+constraint fails at commit, unsupported schema versions, initialization
+cleanup, and filesystem errors. Test-created connections are explicitly closed.
+
 ## Known limitations
 
-- The `asyncio.Lock` serialises tasks within one process. SQLite's own file
-  locking protects against corruption if two processes share a cache database,
-  but one process can still lose the other's entry on a near-simultaneous write
-  to the same key.
+- The worker lock serializes access within one store instance. SQLite's file
+  locking coordinates separate instances/processes. Distinct-key upserts do
+  not overwrite each other's rows; competing same-key updates are last-writer-wins.
+- Cancelled operations can continue in a worker. Shutdown may wait for them;
+  SQLite's default lock wait is five seconds. The async source deadline does
+  not forcibly terminate an in-progress database call.
 - One TTL for all three sources, although arXiv results age far more slowly
   than web search results. Per-source TTLs are the obvious refinement.
 - No size bound or eviction policy; the database grows until deleted.
