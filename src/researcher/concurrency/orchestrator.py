@@ -9,7 +9,7 @@ import httpx
 from ai import Source
 from researcher.config import Settings
 from researcher.interfaces import AIServiceProtocol, SourceCacheProtocol
-from researcher.models import CollectionResult, SourceName, SourceOutcome
+from researcher.models import CollectionResult, SourceName, SourceOutcome, SourceStatus
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +94,7 @@ class SourceOrchestrator:
         sources: list[Source] | None = None
         cache_hit = False
         warnings: list[str] = []
-        status = "failed"
+        status: SourceStatus = "failed"
         stage = "cache_read" if use_cache else "fetch"
 
         try:
