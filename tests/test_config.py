@@ -10,11 +10,31 @@ from researcher.config import Settings, load_settings
 
 @pytest.fixture(autouse=True)
 def isolated_environment(monkeypatch):
-    """Restore the original environment after every test.
+    """Isolate application settings while preserving OS variables.
 
     Replacing the mapping also isolates changes made by load_dotenv.
     """
-    monkeypatch.setattr(os, "environ", {})
+    isolated = os.environ.copy()
+    application_variables = {name.upper() for name in Settings.model_fields}
+    application_variables.update(
+        {
+            "ANTHROPIC_API_KEY",
+            "OPENAI_API_KEY",
+            "GOOGLE_API_KEY",
+            "TAVILY_API_KEY",
+            "SERPER_API_KEY",
+            "LLM_PROVIDER",
+            "LLM_MODEL",
+            "WEB_SEARCH_PROVIDER",
+            "PYTHON_DOTENV_DISABLED",
+        }
+    )
+
+    for name in list(isolated):
+        if name.upper() in application_variables:
+            del isolated[name]
+
+    monkeypatch.setattr(os, "environ", isolated)
 
 
 def test_default_settings():
