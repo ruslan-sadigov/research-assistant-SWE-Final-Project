@@ -1,5 +1,7 @@
 # Async Research Assistant
 
+[![CI](https://github.com/ruslan-sadigov/research-assistant-SWE-Final-Project/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ruslan-sadigov/research-assistant-SWE-Final-Project/actions/workflows/ci.yml)
+
 ## Setup
 
 Requires uv and Python 3.12. Run commands from the project root.
