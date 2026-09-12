@@ -1,4 +1,9 @@
-from src.researcher.models import ResearchResult
+from researcher.concurrency.orchestrator import SourceOrchestrator
+from researcher.models import (
+    ResearchResult,
+    SourceName,
+)
+from researcher.services.ai_service import AIService
 
 
 def validate_question(question: str, max_length: int) -> str:
@@ -47,3 +52,51 @@ def render_result(result: ResearchResult) -> str:
             lines.append(f"  -{warning}")
 
     return "\n".join(lines)
+
+
+class Researcher:
+    """Coordinate source collection and answer synthesis for one question."""
+
+    def __init__(self, orchestrator: SourceOrchestrator, ai_service: AIService) -> None:
+        self._orchestrator = orchestrator
+        self._ai_service = ai_service
+
+    async def research(
+        self,
+        question: str,
+        selected_sources: list[SourceName],
+        *,
+        use_cache: bool = True,
+    ) -> ResearchResult:
+        collection = await self._orchestrator.collect_sources(
+            question, selected_sources, use_cache=use_cache
+        )
+
+        warnings = [outcome.warning for outcome in collection.outcomes if outcome.warning]
+
+        if not collection.sources:
+            warnings.append("No sources were retrieved; no answer could be produced.")
+            return ResearchResult(
+                question=question,
+                answer=None,
+                collection=collection,
+                warnings=warnings,
+            )
+
+        try:
+            answer = await self._ai_service.synthesize_answer(question, collection.sources)
+        except Exception as exc:
+            warnings.append(f"Synthesis failed: {exc}")
+            return ResearchResult(
+                question=question,
+                answer=None,
+                collection=collection,
+                warnings=warnings,
+            )
+
+        return ResearchResult(
+            question=question,
+            answer=answer,
+            collection=collection,
+            warnings=warnings,
+        )
