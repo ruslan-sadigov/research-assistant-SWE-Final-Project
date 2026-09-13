@@ -1,6 +1,4 @@
-def main() -> None:
-    print("Research Assistant: application setup complete.")
-
+from researcher.cli import main
 
 if __name__ == "__main__":
     main()
