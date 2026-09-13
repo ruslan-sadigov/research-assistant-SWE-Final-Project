@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import logging
 import sys
+from typing import cast
 
 from researcher.concurrency.orchestrator import SourceOrchestrator
 from researcher.config import Settings, load_settings
@@ -45,8 +46,8 @@ def parse_sources(raw: str) -> list[SourceName]:
         raise ValueError(
             f"Unknown source(s): {', '.join(unknown)}. Valid: {', '.join(VALID_SOURCES)}"
         )
-    # Deduplicate while preserving order.
-    return list(dict.fromkeys(requested))  # type: ignore[return-value]
+    deduplicated = list(dict.fromkeys(requested))
+    return cast(list[SourceName], deduplicated)
 
 
 def configure_logging(settings: Settings) -> None:
