@@ -449,3 +449,55 @@ async def test_redirect_loop_stops_without_outer_retries(dummy_settings):
     assert isinstance(exc.value.__cause__, httpx.TooManyRedirects)
     assert len(requests) == 6
     sleep.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [403, 429, 503])
+async def test_failure_logs_http_status_without_sensitive_details(dummy_settings, caplog, status):
+    settings = dummy_settings.model_copy(update={"retry_max_attempts": 1})
+
+    def handler(request):
+        return httpx.Response(status, text="private-response-body")
+
+    service = AIService(settings, transport_factory=lambda: httpx.MockTransport(handler))
+    async with service.open_source_client() as client:
+        with pytest.raises(ProviderError):
+            await service.fetch_sources("arxiv", "private-query", client=client)
+    messages = [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == "researcher.services.ai_service"
+    ]
+    assert messages
+    assert all(f"http_status={status}" in message for message in messages)
+    assert all(
+        "private-query" not in message and "private-response-body" not in message
+        for message in messages
+    )
+
+
+def test_http_status_handles_sdk_errors_and_cycles():
+    from researcher.services.ai_service import _http_status
+
+    error = RuntimeError("private-error")
+    error.code = 404
+    wrapped = ProviderError("private-wrapper")
+    wrapped.__cause__ = error
+    assert _http_status(wrapped) == 404
+    error.code = "private-value"
+    error.__cause__ = wrapped
+    assert _http_status(wrapped) is None
+
+
+@pytest.mark.asyncio
+async def test_failure_log_has_no_status_for_transport_error(dummy_settings, caplog):
+    def handler(request):
+        raise httpx.ConnectError("private-error", request=request)
+
+    settings = dummy_settings.model_copy(update={"retry_max_attempts": 1})
+    service = AIService(settings, transport_factory=lambda: httpx.MockTransport(handler))
+    async with service.open_source_client() as client:
+        with pytest.raises(ProviderError):
+            await service.fetch_sources("arxiv", "query", client=client)
+    assert "http_status=None" in caplog.text
+    assert "private-error" not in caplog.text

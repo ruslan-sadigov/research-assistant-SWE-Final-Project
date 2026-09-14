@@ -62,6 +62,25 @@ def _retryable(exc: Exception) -> bool:
     return False
 
 
+def _http_status(exc: BaseException) -> int | None:
+    """Extract only a numeric HTTP status from a possibly wrapped failure."""
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        status = (
+            current.response.status_code
+            if isinstance(current, httpx.HTTPStatusError)
+            else getattr(current, "status_code", None)
+        )
+        if status is None:
+            status = getattr(current, "code", None)
+        if isinstance(status, int) and not isinstance(status, bool) and 100 <= status <= 599:
+            return status
+        current = current.__cause__ or current.__context__
+    return None
+
+
 async def _retry(
     operation: Callable[[], Awaitable[T]],
     settings: Settings,
@@ -76,11 +95,12 @@ async def _retry(
         except Exception as exc:
             retryable = _retryable(exc)
             logger.warning(
-                "AI operation failed: operation=%s attempt=%d max_attempts=%d error_type=%s",
+                "AI operation failed: operation=%s attempt=%d max_attempts=%d error_type=%s http_status=%s",
                 label,
                 attempt,
                 settings.retry_max_attempts,
                 type(exc).__name__,
+                _http_status(exc),
             )
             if not retryable:
                 raise

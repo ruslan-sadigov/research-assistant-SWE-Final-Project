@@ -19,7 +19,7 @@ the client internally; Tavily and Serper use it.
   Unknown `ProviderError` failures receive bounded retries. Known untyped
   configuration messages from the supplied module are recognized; this is not
   a universal classifier for every third-party exception.
-- Logs include operation, attempt, budget, and exception type, not raw exception
+- Logs include operation, attempt, budget, exception type, and numeric HTTP status (or None), not raw exception
   text, prompts, credentials, or request URLs/bodies.
 
 ## HTTP and fetch retries
@@ -86,3 +86,22 @@ verify that 403 responses are not retried.
 These tests establish client behavior, not live API availability. A descriptive
 User-Agent addresses Wikimedia's identification requirement but does not prove
 that it caused the reported 403; live verification remains outstanding.
+
+
+## Live arXiv diagnostic (2026-09-14)
+
+A single source fetch for `quantum computing`, with retries disabled, received
+an HTTP 301 redirect from the HTTP endpoint, followed by HTTP 429 after 16.11
+seconds. The diagnostic used the application service and supplied arXiv fetcher,
+with a 30-second HTTP timeout and 35-second overall cap. It did not call Gemini.
+
+This confirms a rate-limit response for this run, not a general arXiv outage or
+the exact cause of previous timeouts. The scope of the limit (client, shared IP,
+or service traffic) remains unknown. Avoid repeated live retries; use the
+working sources and bounded per-source deadlines while arXiv is unavailable.
+
+Retry warnings now include `http_status`, including statuses nested inside
+provider wrappers. Missing HTTP statuses are logged as `None`. Status extraction
+handles cyclic exception chains and does not log exception messages or response
+bodies. Offline tests cover 403, 429, 503, SDK-style error codes, wrapped failures,
+and transport failures without HTTP responses.
