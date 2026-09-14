@@ -150,3 +150,50 @@ async def test_research_handles_synthesis_failure():
 
     assert result.answer is None
     assert any("Synthesis failed" in w for w in result.warnings)
+
+
+def test_render_synthesis_failure_preserves_evidence():
+    source = _make_source()
+    result = ResearchResult(
+        question="Question", collection=CollectionResult(sources=[source], elapsed_seconds=0)
+    )
+    text = render_result(result)
+    assert "synthesis failed" in text
+    assert "no sources were retrieved" not in text
+    assert source.title in text
+    assert source.url in text
+
+
+def test_render_escapes_terminal_controls_in_all_fields():
+    marker = "danger\x1b[2J\r\b\u202e"
+    source = Source(
+        title=marker, url="https://example.com/" + marker, snippet="Evidence", origin="web"
+    )
+    result = ResearchResult(
+        question=marker,
+        answer=AnswerWithCitations(
+            question=marker, answer=marker, citations=[Citation(index=1, source=source)]
+        ),
+        collection=CollectionResult(sources=[source], elapsed_seconds=0),
+        warnings=[marker],
+    )
+    text = render_result(result)
+    for character in ["\x1b", "\r", "\b", "\u202e"]:
+        assert character not in text
+    assert "References:" in text
+    assert "Warnings:" in text
+    assert "\n" in text
+
+
+@pytest.mark.asyncio
+async def test_synthesis_error_does_not_expose_provider_details():
+    class FailingService:
+        async def synthesize_answer(self, question, sources):
+            raise RuntimeError("private-value")
+
+    collection = CollectionResult(sources=[_make_source()], elapsed_seconds=0)
+    result = await Researcher(FakeOrchestrator(collection), FailingService()).research(
+        "Question", ["wiki"]
+    )
+    assert "private-value" not in render_result(result)
+    assert result.collection.sources == collection.sources

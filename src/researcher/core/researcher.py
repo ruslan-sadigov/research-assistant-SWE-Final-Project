@@ -1,9 +1,10 @@
-from researcher.concurrency.orchestrator import SourceOrchestrator
+import unicodedata
+
+from researcher.interfaces import AIServiceProtocol, SourceOrchestratorProtocol
 from researcher.models import (
     ResearchResult,
     SourceName,
 )
-from researcher.services.ai_service import AIService
 
 
 def validate_question(question: str, max_length: int) -> str:
@@ -28,12 +29,30 @@ def validate_question(question: str, max_length: int) -> str:
     return cleaned
 
 
+def sanitize_output(text: str) -> str:
+    """Escape terminal controls and Unicode formatting controls for plain-text output."""
+    return "".join(
+        (
+            character
+            if character in "\n\t" or not unicodedata.category(character).startswith("C")
+            else ascii(character)[1:-1]
+        )
+        for character in text
+    )
+
+
 def render_result(result: ResearchResult) -> str:
     """Turn a ResearchResult into human-readable text for the CLI."""
     lines: list[str] = [f"Q: {result.question}"]
 
     if result.answer is None:
-        lines.append("A: No answer could be produced — no sources were retrieved.")
+        if result.collection.sources:
+            lines.append("A: No answer could be produced - synthesis failed.")
+            lines.extend(["", "Retrieved sources:"])
+            for source in result.collection.sources:
+                lines.extend([f"  ({source.origin}) {source.title}", f"    {source.url}"])
+        else:
+            lines.append("A: No answer could be produced - no sources were retrieved.")
     else:
         lines.append(f"A: {result.answer.answer}")
         if result.answer.citations:
@@ -49,15 +68,17 @@ def render_result(result: ResearchResult) -> str:
         lines.append("")
         lines.append("Warnings: ")
         for warning in result.warnings:
-            lines.append(f"  -{warning}")
+            lines.append(f"  - {warning}")
 
-    return "\n".join(lines)
+    return sanitize_output("\n".join(lines))
 
 
 class Researcher:
     """Coordinate source collection and answer synthesis for one question."""
 
-    def __init__(self, orchestrator: SourceOrchestrator, ai_service: AIService) -> None:
+    def __init__(
+        self, orchestrator: SourceOrchestratorProtocol, ai_service: AIServiceProtocol
+    ) -> None:
         self._orchestrator = orchestrator
         self._ai_service = ai_service
 
@@ -85,8 +106,8 @@ class Researcher:
 
         try:
             answer = await self._ai_service.synthesize_answer(question, collection.sources)
-        except Exception as exc:
-            warnings.append(f"Synthesis failed: {exc}")
+        except Exception:
+            warnings.append("Synthesis failed; check provider configuration and availability.")
             return ResearchResult(
                 question=question,
                 answer=None,

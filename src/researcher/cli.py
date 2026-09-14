@@ -8,7 +8,7 @@ from typing import cast
 
 from researcher.concurrency.orchestrator import SourceOrchestrator
 from researcher.config import Settings, load_settings
-from researcher.core.researcher import Researcher, render_result, validate_question
+from researcher.core.researcher import Researcher, render_result, sanitize_output, validate_question
 from researcher.models import SourceName
 from researcher.services.ai_service import AIService
 from researcher.services.cache import SourceCache
@@ -41,6 +41,8 @@ def build_parser() -> argparse.ArgumentParser:
 def parse_sources(raw: str) -> list[SourceName]:
     """Turn '--sources wiki,arxiv' into a validated, deduplicated list."""
     requested = [item.strip().lower() for item in raw.split(",") if item.strip()]
+    if not requested:
+        raise ValueError("Select at least one source.")
     unknown = [item for item in requested if item not in VALID_SOURCES]
     if unknown:
         raise ValueError(
@@ -67,8 +69,8 @@ async def run_ask(
 
     try:
         result = await researcher.research(question, sources, use_cache=use_cache)
-    except Exception as exc:
-        print(f"Research failed: {exc}", file=sys.stderr)
+    except Exception:
+        print("Research failed; check configuration and provider availability.", file=sys.stderr)
         return 1
 
     print(render_result(result))
@@ -79,7 +81,13 @@ def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
 
-    settings = load_settings()
+    try:
+        settings = load_settings()
+    except (ValueError, OSError):
+        print(
+            "Invalid configuration; check environment settings and the .env file.", file=sys.stderr
+        )
+        sys.exit(2)
     configure_logging(settings)
 
     if args.command == "ask":
@@ -87,7 +95,7 @@ def main() -> None:
             question = validate_question(args.question, settings.max_question_length)
             sources = parse_sources(args.sources)
         except ValueError as exc:
-            print(f"Invalid input: {exc}", file=sys.stderr)
+            print(sanitize_output(f"Invalid input: {exc}"), file=sys.stderr)
             sys.exit(2)
 
         exit_code = asyncio.run(run_ask(settings, question, sources, use_cache=not args.no_cache))
