@@ -367,3 +367,85 @@ async def test_synthesis_retry_budget_is_bounded(dummy_settings):
             await AIService(dummy_settings).synthesize_answer("question", [])
     assert synth.call_count == 3
     assert [call.args[0] for call in sleep.await_args_list] == [1, 2]
+
+
+@pytest.mark.asyncio
+async def test_wikipedia_requests_identify_application(dummy_settings):
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        user_agent = request.headers["User-Agent"]
+        assert "ResearchAssistant/" in user_agent
+        assert (
+            "https://github.com/ruslan-sadigov/research-assistant-SWE-Final-Project" in user_agent
+        )
+        if request.url.path.endswith("api.php"):
+            return httpx.Response(200, json=["query", ["Photosynthesis"]])
+        return httpx.Response(200, json={"title": "Photosynthesis", "extract": "Plant energy"})
+
+    service = AIService(dummy_settings, transport_factory=lambda: httpx.MockTransport(handler))
+    async with service.open_source_client() as client:
+        sources = await service.fetch_sources("wiki", "query", client=client)
+    assert len(requests) == 2
+    assert sources[0].title == "Photosynthesis"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("transient_failure", [False, True])
+async def test_arxiv_redirect_preserves_query_and_retry_policy(dummy_settings, transient_failure):
+    requests = []
+    responses = []
+    https_attempts = 0
+
+    def handler(request):
+        nonlocal https_attempts
+        requests.append(request)
+        assert request.url.params["search_query"] == "all:quantum physics"
+        assert request.url.params["max_results"] == "3"
+        assert "ResearchAssistant/" in request.headers["User-Agent"]
+        if request.url.scheme == "http":
+            response = httpx.Response(
+                301, headers={"Location": str(request.url.copy_with(scheme="https"))}
+            )
+        else:
+            https_attempts += 1
+            if transient_failure and https_attempts == 1:
+                response = httpx.Response(503)
+            else:
+                response = httpx.Response(
+                    200,
+                    text='<feed xmlns="http://www.w3.org/2005/Atom"><entry><title>Quantum physics</title><summary>Evidence</summary><id>https://arxiv.org/abs/1234.5678</id></entry></feed>',
+                )
+        responses.append(response)
+        return response
+
+    service = AIService(dummy_settings, transport_factory=lambda: httpx.MockTransport(handler))
+    with patch("asyncio.sleep", new_callable=AsyncMock) as sleep:
+        async with service.open_source_client() as client:
+            sources = await service.fetch_sources("arxiv", "quantum physics", client=client)
+    assert sources[0].title == "Quantum physics"
+    assert sources[0].origin == "arxiv"
+    assert [request.url.scheme for request in requests] == (
+        ["http", "https", "https"] if transient_failure else ["http", "https"]
+    )
+    assert sleep.await_count == int(transient_failure)
+    assert all(response.is_closed for response in responses)
+
+
+@pytest.mark.asyncio
+async def test_redirect_loop_stops_without_outer_retries(dummy_settings):
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        return httpx.Response(301, headers={"Location": str(request.url)})
+
+    service = AIService(dummy_settings, transport_factory=lambda: httpx.MockTransport(handler))
+    with patch("asyncio.sleep", new_callable=AsyncMock) as sleep:
+        async with service.open_source_client() as client:
+            with pytest.raises(ProviderError) as exc:
+                await service.fetch_sources("arxiv", "query", client=client)
+    assert isinstance(exc.value.__cause__, httpx.TooManyRedirects)
+    assert len(requests) == 6
+    sleep.assert_not_awaited()

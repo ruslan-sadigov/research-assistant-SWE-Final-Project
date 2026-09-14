@@ -64,3 +64,25 @@ tests. They cover routing, limits, shared-client forwarding, HTTP status and
 body failures, Wikipedia summaries, POST replay, exhaustion, capped backoff,
 permanent errors, safe logs, synthesis retries, worker-thread execution, and
 cancellation. No live provider SDKs or credentials are needed for these tests.
+
+
+## Source API compatibility
+
+The shared client follows redirects, with a maximum of five redirects per
+request. This handles the supplied arXiv fetcher's HTTP endpoint redirecting to
+HTTPS. Redirected requests still use the retry transport and remain inside the
+orchestrator's per-source deadline. Redirect loops fail without outer retries.
+
+Requests identify the application as `ResearchAssistant/0.1.0`, with the project
+GitHub URL in the User-Agent. This applies to Wikipedia search and summaries as
+well as other fetchers using the shared client. The supplied `ai/` files remain
+unchanged.
+
+Offline regression tests exercise the actual Wikipedia and arXiv fetchers with
+mock HTTP responses: identifying headers, HTTP-to-HTTPS redirection, query
+preservation, retry after a redirected 503, and redirect limits. Existing tests
+verify that 403 responses are not retried.
+
+These tests establish client behavior, not live API availability. A descriptive
+User-Agent addresses Wikimedia's identification requirement but does not prove
+that it caused the reported 403; live verification remains outstanding.
