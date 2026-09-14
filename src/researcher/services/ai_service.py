@@ -41,7 +41,7 @@ def _retryable(exc: Exception) -> bool:
             status = error.response.status_code
         if isinstance(status, int):
             return status in (408, 429) or 500 <= status < 600
-        if isinstance(error, (ValueError, TypeError, ImportError)):
+        if isinstance(error, (ValueError, TypeError, ImportError, httpx.TooManyRedirects)):
             return False
         if isinstance(error, (httpx.TransportError, TimeoutError, ConnectionError)):
             return True
@@ -150,6 +150,14 @@ class AIService:
     def open_source_client(self) -> AbstractAsyncContextManager[httpx.AsyncClient]:
         return httpx.AsyncClient(
             timeout=httpx.Timeout(self.settings.per_source_timeout_seconds),
+            follow_redirects=True,
+            max_redirects=5,
+            headers={
+                "User-Agent": (
+                    "ResearchAssistant/0.1.0 "
+                    "(+https://github.com/ruslan-sadigov/research-assistant-SWE-Final-Project)"
+                ),
+            },
             transport=RetryingTransport(self._transport_factory(), self.settings),
         )
 
