@@ -105,3 +105,19 @@ provider wrappers. Missing HTTP statuses are logged as `None`. Status extraction
 handles cyclic exception chains and does not log exception messages or response
 bodies. Offline tests cover 403, 429, 503, SDK-style error codes, wrapped failures,
 and transport failures without HTTP responses.
+
+
+## arXiv Atom error responses
+
+The arXiv API documents errors as Atom entries whose identifiers point to
+`arxiv.org/api/errors`. The supplied parser can turn these into ordinary sources
+when the HTTP response is successful. `AIService` now rejects such results with
+a generic `ProviderError` after fetching, without retrying the error feed.
+The orchestrator marks that source as failed, so the error is not cached or
+passed to synthesis. Detection uses the arXiv host and error path, rather than
+the title: a real paper titled "Error" remains valid evidence.
+
+Offline tests cover HTTP and HTTPS identifiers, non-retry behavior, safe error
+messages, and integration through the orchestrator and researcher. The supplied
+`ai/` module is unchanged. Report the parser limitation to the instructor.
+See the [official error-feed documentation](https://info.arxiv.org/help/api/user-manual.html#34-errors).

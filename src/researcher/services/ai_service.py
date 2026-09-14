@@ -5,6 +5,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from contextlib import AbstractAsyncContextManager
 from typing import Protocol, TypeVar
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -202,7 +203,17 @@ class AIService:
                 query, client=client, max_results=self.settings.max_sources_per_query
             )
 
-        return await _retry(fetch, self.settings, source)
+        results = await _retry(fetch, self.settings, source)
+        if source == "arxiv":
+            # The supplied parser treats Atom error entries as ordinary sources.
+            # Reject the whole response before it reaches caching or synthesis.
+            for result in results:
+                url = urlsplit(result.url)
+                if url.hostname in {"arxiv.org", "www.arxiv.org", "export.arxiv.org"} and (
+                    url.path.rstrip("/") == "/api/errors"
+                ):
+                    raise ProviderError("arXiv returned an API error feed.")
+        return results
 
     async def synthesize_answer(
         self,

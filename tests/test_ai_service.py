@@ -501,3 +501,65 @@ async def test_failure_log_has_no_status_for_transport_error(dummy_settings, cap
             await service.fetch_sources("arxiv", "query", client=client)
     assert "http_status=None" in caplog.text
     assert "private-error" not in caplog.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scheme", ["http", "https"])
+async def test_arxiv_error_feed_rejected_without_retry(dummy_settings, scheme, caplog):
+    xml = f'<feed xmlns="http://www.w3.org/2005/Atom"><entry><id>{scheme}://arxiv.org/api/errors#incorrect_id_format</id><title>Error</title><summary>private-error-detail</summary></entry></feed>'
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        return httpx.Response(200, text=xml)
+
+    service = AIService(dummy_settings, transport_factory=lambda: httpx.MockTransport(handler))
+    with patch("asyncio.sleep", new_callable=AsyncMock) as sleep:
+        async with service.open_source_client() as client:
+            with pytest.raises(ProviderError, match="API error feed") as error:
+                await service.fetch_sources("arxiv", "question", client=client)
+    assert len(requests) == 1
+    sleep.assert_not_awaited()
+    assert "private-error-detail" not in str(error.value)
+    assert "private-error-detail" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_arxiv_error_feed_not_cached_or_synthesized(dummy_settings):
+    from researcher.concurrency.orchestrator import SourceOrchestrator
+    from researcher.core.researcher import Researcher
+
+    xml = '<feed xmlns="http://www.w3.org/2005/Atom"><entry><id>http://arxiv.org/api/errors#invalid_query</id><title>Error</title><summary>Invalid query</summary></entry></feed>'
+    service = AIService(
+        dummy_settings,
+        transport_factory=lambda: httpx.MockTransport(
+            lambda request: httpx.Response(200, text=xml)
+        ),
+    )
+    cache = MagicMock()
+    cache.get_sources = AsyncMock(return_value=None)
+    cache.set_sources = AsyncMock()
+    with patch.object(service, "synthesize_answer", new_callable=AsyncMock) as synthesize:
+        result = await Researcher(
+            SourceOrchestrator(dummy_settings, service, cache), service
+        ).research("question", ["arxiv"])
+    assert result.answer is None
+    assert result.collection.sources == []
+    assert result.collection.outcomes[0].status == "failed"
+    cache.set_sources.assert_not_awaited()
+    synthesize.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_arxiv_paper_titled_error_is_valid(dummy_settings):
+    xml = '<feed xmlns="http://www.w3.org/2005/Atom"><entry><id>https://arxiv.org/abs/1234.5678</id><title>Error</title><summary>A paper about errors</summary></entry></feed>'
+    service = AIService(
+        dummy_settings,
+        transport_factory=lambda: httpx.MockTransport(
+            lambda request: httpx.Response(200, text=xml)
+        ),
+    )
+    async with service.open_source_client() as client:
+        sources = await service.fetch_sources("arxiv", "question", client=client)
+    assert len(sources) == 1
+    assert sources[0].title == "Error"
