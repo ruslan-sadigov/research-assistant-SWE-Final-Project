@@ -19,7 +19,7 @@ the client internally; Tavily and Serper use it.
   Unknown `ProviderError` failures receive bounded retries. Known untyped
   configuration messages from the supplied module are recognized; this is not
   a universal classifier for every third-party exception.
-- Logs include operation, attempt, budget, and exception type, not raw exception
+- Logs include operation, attempt, budget, exception type, and numeric HTTP status (or None), not raw exception
   text, prompts, credentials, or request URLs/bodies.
 
 ## HTTP and fetch retries
@@ -86,3 +86,103 @@ verify that 403 responses are not retried.
 These tests establish client behavior, not live API availability. A descriptive
 User-Agent addresses Wikimedia's identification requirement but does not prove
 that it caused the reported 403; live verification remains outstanding.
+
+
+## Live arXiv diagnostic (2026-09-14)
+
+A single source fetch for `quantum computing`, with retries disabled, received
+an HTTP 301 redirect from the HTTP endpoint, followed by HTTP 429 after 16.11
+seconds. The diagnostic used the application service and supplied arXiv fetcher,
+with a 30-second HTTP timeout and 35-second overall cap. It did not call Gemini.
+
+This confirms a rate-limit response for this run, not a general arXiv outage or
+the exact cause of previous timeouts. The scope of the limit (client, shared IP,
+or service traffic) remains unknown. Avoid repeated live retries; use the
+working sources and bounded per-source deadlines while arXiv is unavailable.
+
+Retry warnings now include `http_status`, including statuses nested inside
+provider wrappers. Missing HTTP statuses are logged as `None`. Status extraction
+handles cyclic exception chains and does not log exception messages or response
+bodies. Offline tests cover 403, 429, 503, SDK-style error codes, wrapped failures,
+and transport failures without HTTP responses.
+
+
+## arXiv Atom error responses
+
+The arXiv API documents errors as Atom entries whose identifiers point to
+`arxiv.org/api/errors`. The supplied parser can turn these into ordinary sources
+when the HTTP response is successful. `AIService` now rejects such results with
+a generic `ProviderError` after fetching, without retrying the error feed.
+The orchestrator marks that source as failed, so the error is not cached or
+passed to synthesis. Detection uses the arXiv host and error path, rather than
+the title: a real paper titled "Error" remains valid evidence.
+
+Offline tests cover HTTP and HTTPS identifiers, non-retry behavior, safe error
+messages, and integration through the orchestrator and researcher. The supplied
+`ai/` module is unchanged. Report the parser limitation to the instructor.
+See the [official error-feed documentation](https://info.arxiv.org/help/api/user-manual.html#34-errors).
+
+
+## arXiv request pacing
+
+All requests to `arxiv.org`, `www.arxiv.org`, and `export.arxiv.org` acquire an
+arXiv-only slot in the retry transport. The slot spans request transmission,
+response-body consumption, and response closure. Retries and redirects each
+acquire their own slot. Wikipedia and web-search requests bypass this limiter.
+
+The limiter conservatively waits three seconds after the previous attempt
+finishes before starting another. It uses a nonblocking OS file lock and a
+persisted timestamp under `~/.cache/research-assistant/arxiv/`. Separate service
+instances and CLI processes using that same local directory share the limit.
+Windows uses byte-range locking; Linux/macOS use `flock`. No dependency was added.
+Keep the directory on local disk and do not delete its lock file while running.
+
+Waiting yields to the event loop and remains inside the existing per-source
+deadline. Cancellation releases the lock; a cancelled in-flight request still
+records its completion time. An inaccessible or invalid limiter state fails the
+source instead of sending an unpaced request. A process killed abruptly releases
+its OS lock; the persisted start timestamp provides spacing for its successor,
+but cannot establish when a remote server stopped processing the killed request.
+
+This coordinates local processes sharing one directory, not different user
+accounts, machines, or containers with separate filesystems. Team members must
+still coordinate live arXiv usage: the documented limit applies across machines
+under their control. State uses wall-clock time to work across processes and
+reboots; system-clock jumps can affect pacing, so keep system time synchronized.
+`--no-cache` bypasses evidence storage, not this limiter.
+
+The three-second wait is independent of retry backoff and may mean that not all
+configured retries fit inside the ten-second deadline. HTTP-to-HTTPS redirects
+also consume a slot. Server-requested cooldowns are described below.
+
+Offline tests cover spacing across instances, failed attempts, task cancellation,
+deadlines, corrupted state, cross-process exclusion, and transport retries and
+redirects. Local verification exercised Windows locking; Linux locking is to be
+verified by CI. See [arXiv API rate limits](https://info.arxiv.org/help/api/tou.html#rate-limits).
+
+
+## Retry-After and shared cooldowns
+
+For retryable HTTP failures, the service reads `Retry-After` as nonnegative whole
+seconds or a timezone-aware HTTP date. It waits for the larger of that delay and
+its exponential backoff. The backoff cap does not shorten a server-requested
+wait. Missing, malformed, or non-finite values fall back to ordinary backoff;
+past dates add no extra delay. Permanent errors remain non-retryable, and the
+last attempt does not sleep or start an extra retry.
+
+The wait remains inside the source deadline, so a long cooldown can produce a
+timeout without another request. For arXiv, the active request slot additionally
+persists a `retry-after-until` timestamp before releasing its OS lock, including
+on the last failed attempt. New service instances or CLI processes sharing the
+limiter directory must respect both that timestamp and the usual three-second
+spacing. Cancelling a waiter does not erase the cooldown. Invalid persisted
+cooldown state fails the source rather than bypassing the limiter.
+
+This header handling covers HTTPX responses used by the source fetchers; it does
+not claim to interpret every provider SDK's rate-limit metadata. Our previous
+live 429 diagnostic did not capture Retry-After, so we do not know whether arXiv
+sent one. These changes were verified offline without additional live requests.
+
+Tests cover seconds, HTTP dates, malformed and past values, delays exceeding the
+backoff cap, cancellation at the deadline, and shared cooldown persistence after
+retry exhaustion. See [HTTP Retry-After semantics](https://www.rfc-editor.org/rfc/rfc9110.html#section-10.2.3).

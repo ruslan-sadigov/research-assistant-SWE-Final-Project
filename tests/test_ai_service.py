@@ -11,6 +11,21 @@ from researcher.config import Settings
 from researcher.services.ai_service import AIService
 
 
+@pytest.fixture(autouse=True)
+def isolated_arxiv_limiter(tmp_path, monkeypatch):
+    from researcher.services.arxiv_limit import ArxivLimiter
+
+    now = [100.0]
+
+    async def advance(seconds):
+        now[0] += seconds
+
+    monkeypatch.setattr(
+        "researcher.services.ai_service.ArxivLimiter",
+        lambda: ArxivLimiter(tmp_path / "limiter", clock=lambda: now[0], sleep=advance),
+    )
+
+
 @pytest.fixture
 def dummy_settings():
     return Settings(
@@ -449,3 +464,201 @@ async def test_redirect_loop_stops_without_outer_retries(dummy_settings):
     assert isinstance(exc.value.__cause__, httpx.TooManyRedirects)
     assert len(requests) == 6
     sleep.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [403, 429, 503])
+async def test_failure_logs_http_status_without_sensitive_details(dummy_settings, caplog, status):
+    settings = dummy_settings.model_copy(update={"retry_max_attempts": 1})
+
+    def handler(request):
+        return httpx.Response(status, text="private-response-body")
+
+    service = AIService(settings, transport_factory=lambda: httpx.MockTransport(handler))
+    async with service.open_source_client() as client:
+        with pytest.raises(ProviderError):
+            await service.fetch_sources("arxiv", "private-query", client=client)
+    messages = [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == "researcher.services.ai_service"
+    ]
+    assert messages
+    assert all(f"http_status={status}" in message for message in messages)
+    assert all(
+        "private-query" not in message and "private-response-body" not in message
+        for message in messages
+    )
+
+
+def test_http_status_handles_sdk_errors_and_cycles():
+    from researcher.services.ai_service import _http_status
+
+    error = RuntimeError("private-error")
+    error.code = 404
+    wrapped = ProviderError("private-wrapper")
+    wrapped.__cause__ = error
+    assert _http_status(wrapped) == 404
+    error.code = "private-value"
+    error.__cause__ = wrapped
+    assert _http_status(wrapped) is None
+
+
+@pytest.mark.asyncio
+async def test_failure_log_has_no_status_for_transport_error(dummy_settings, caplog):
+    def handler(request):
+        raise httpx.ConnectError("private-error", request=request)
+
+    settings = dummy_settings.model_copy(update={"retry_max_attempts": 1})
+    service = AIService(settings, transport_factory=lambda: httpx.MockTransport(handler))
+    async with service.open_source_client() as client:
+        with pytest.raises(ProviderError):
+            await service.fetch_sources("arxiv", "query", client=client)
+    assert "http_status=None" in caplog.text
+    assert "private-error" not in caplog.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scheme", ["http", "https"])
+async def test_arxiv_error_feed_rejected_without_retry(dummy_settings, scheme, caplog):
+    xml = f'<feed xmlns="http://www.w3.org/2005/Atom"><entry><id>{scheme}://arxiv.org/api/errors#incorrect_id_format</id><title>Error</title><summary>private-error-detail</summary></entry></feed>'
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        return httpx.Response(200, text=xml)
+
+    service = AIService(dummy_settings, transport_factory=lambda: httpx.MockTransport(handler))
+    with patch("asyncio.sleep", new_callable=AsyncMock) as sleep:
+        async with service.open_source_client() as client:
+            with pytest.raises(ProviderError, match="API error feed") as error:
+                await service.fetch_sources("arxiv", "question", client=client)
+    assert len(requests) == 1
+    sleep.assert_not_awaited()
+    assert "private-error-detail" not in str(error.value)
+    assert "private-error-detail" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_arxiv_error_feed_not_cached_or_synthesized(dummy_settings):
+    from researcher.concurrency.orchestrator import SourceOrchestrator
+    from researcher.core.researcher import Researcher
+
+    xml = '<feed xmlns="http://www.w3.org/2005/Atom"><entry><id>http://arxiv.org/api/errors#invalid_query</id><title>Error</title><summary>Invalid query</summary></entry></feed>'
+    service = AIService(
+        dummy_settings,
+        transport_factory=lambda: httpx.MockTransport(
+            lambda request: httpx.Response(200, text=xml)
+        ),
+    )
+    cache = MagicMock()
+    cache.get_sources = AsyncMock(return_value=None)
+    cache.set_sources = AsyncMock()
+    with patch.object(service, "synthesize_answer", new_callable=AsyncMock) as synthesize:
+        result = await Researcher(
+            SourceOrchestrator(dummy_settings, service, cache), service
+        ).research("question", ["arxiv"])
+    assert result.answer is None
+    assert result.collection.sources == []
+    assert result.collection.outcomes[0].status == "failed"
+    cache.set_sources.assert_not_awaited()
+    synthesize.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_arxiv_paper_titled_error_is_valid(dummy_settings):
+    xml = '<feed xmlns="http://www.w3.org/2005/Atom"><entry><id>https://arxiv.org/abs/1234.5678</id><title>Error</title><summary>A paper about errors</summary></entry></feed>'
+    service = AIService(
+        dummy_settings,
+        transport_factory=lambda: httpx.MockTransport(
+            lambda request: httpx.Response(200, text=xml)
+        ),
+    )
+    async with service.open_source_client() as client:
+        sources = await service.fetch_sources("arxiv", "question", client=client)
+    assert len(sources) == 1
+    assert sources[0].title == "Error"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "header,expected",
+    [
+        ("60", 60.0),
+        ("0", 1.0),
+        ("-5", 1.0),
+        ("1.5", 1.0),
+        ("invalid", 1.0),
+        ("", 1.0),
+        ("Wed, 21 Oct 2015 07:28:00 GMT", 1.0),
+    ],
+)
+async def test_retry_after_controls_wait_without_changing_backoff_cap(
+    dummy_settings, header, expected
+):
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        if len(requests) == 1:
+            return httpx.Response(429, headers={"Retry-After": header})
+        return httpx.Response(200)
+
+    service = AIService(dummy_settings, transport_factory=lambda: httpx.MockTransport(handler))
+    with patch("asyncio.sleep", new_callable=AsyncMock) as sleep:
+        async with service.open_source_client() as client:
+            assert (await client.get("https://example.com")).status_code == 200
+    assert len(requests) == 2
+    sleep.assert_awaited_once_with(expected)
+
+
+def test_retry_after_http_date_and_wrapped_error():
+    from researcher.services.ai_service import _retry_after_seconds
+
+    request = httpx.Request("GET", "https://example.com")
+    response = httpx.Response(
+        503, headers={"Retry-After": "Wed, 21 Oct 2015 07:28:00 GMT"}, request=request
+    )
+    original = httpx.HTTPStatusError("private-value", request=request, response=response)
+    wrapped = ProviderError("private-wrapper")
+    wrapped.__cause__ = original
+    with patch("researcher.services.ai_service.time.time", return_value=1445412420):
+        assert _retry_after_seconds(wrapped) == 60
+    response.headers["Retry-After"] = "Wed, 21 Oct 2015 07:28:00"
+    assert _retry_after_seconds(wrapped) is None
+    response.headers["Retry-After"] = "9" * 400
+    assert _retry_after_seconds(wrapped) is None
+    original.__cause__ = wrapped
+    assert _retry_after_seconds(RuntimeError()) is None
+
+
+@pytest.mark.asyncio
+async def test_retry_after_wait_respects_deadline(dummy_settings):
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        return httpx.Response(429, headers={"Retry-After": "60"})
+
+    service = AIService(dummy_settings, transport_factory=lambda: httpx.MockTransport(handler))
+    async with service.open_source_client() as client:
+        with pytest.raises(TimeoutError):
+            async with asyncio.timeout(0.02):
+                await service.fetch_sources("wiki", "query", client=client)
+    assert len(requests) == 1
+
+
+@pytest.mark.asyncio
+async def test_final_arxiv_failure_persists_retry_after_without_sleep(dummy_settings, tmp_path):
+    service = AIService(
+        dummy_settings.model_copy(update={"retry_max_attempts": 1}),
+        transport_factory=lambda: httpx.MockTransport(
+            lambda request: httpx.Response(429, headers={"Retry-After": "60"})
+        ),
+    )
+    with patch("asyncio.sleep", new_callable=AsyncMock) as sleep:
+        async with service.open_source_client() as client:
+            with pytest.raises(ProviderError):
+                await service.fetch_sources("arxiv", "query", client=client)
+    sleep.assert_not_awaited()
+    assert float((tmp_path / "limiter/retry-after-until").read_text()) == 160.0
