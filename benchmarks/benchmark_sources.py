@@ -2,8 +2,10 @@
 
 import argparse
 import asyncio
+import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 from statistics import median
 from time import perf_counter
 
@@ -14,7 +16,7 @@ from researcher.concurrency.orchestrator import SourceOrchestrator
 from researcher.config import Settings
 from researcher.models import SourceName
 
-QUESTION = "What is photosynthesis?"
+QUESTIONS_PATH = Path(__file__).resolve().parents[1] / "data" / "research_questions.json"
 DELAYS: dict[SourceName, float] = {
     "wiki": 0.1,
     "arxiv": 0.2,
@@ -76,6 +78,7 @@ class SimulatedAIService:
 async def run_sequential(
     service: SimulatedAIService,
     settings: Settings,
+    question: str,
 ) -> list[Source]:
     """Fetch one source at a time, sharing a client and applying source deadlines."""
     combined: list[Source] = []
@@ -84,7 +87,7 @@ async def run_sequential(
     async with service.open_source_client() as client:
         for name in DELAYS:
             async with asyncio.timeout(settings.per_source_timeout_seconds):
-                sources = await service.fetch_sources(name, QUESTION, client=client)
+                sources = await service.fetch_sources(name, question, client=client)
 
             for source in sources:
                 if source.url not in seen_urls:
@@ -94,14 +97,14 @@ async def run_sequential(
     return combined
 
 
-async def run_benchmark(repeats: int) -> None:
+async def run_question(question: str, repeats: int) -> tuple[float, float]:
     service = SimulatedAIService()
     settings = Settings(per_source_timeout_seconds=5)
     orchestrator = SourceOrchestrator(settings, service, DisabledCache())
 
     async def run_parallel() -> list[Source]:
         result = await orchestrator.collect_sources(
-            QUESTION,
+            question,
             list(DELAYS),
             use_cache=False,
         )
@@ -110,7 +113,7 @@ async def run_benchmark(repeats: int) -> None:
         return result.sources
 
     # Warm up both paths; exclude these runs from the reported measurements.
-    sequential_evidence = await run_sequential(service, settings)
+    sequential_evidence = await run_sequential(service, settings, question)
     parallel_evidence = await run_parallel()
     if sequential_evidence != parallel_evidence:
         raise RuntimeError("Sequential and parallel evidence differ.")
@@ -127,7 +130,7 @@ async def run_benchmark(repeats: int) -> None:
             started = perf_counter()
 
             if mode == "sequential":
-                evidence_by_mode[mode] = await run_sequential(service, settings)
+                evidence_by_mode[mode] = await run_sequential(service, settings, question)
                 sequential_times.append(perf_counter() - started)
             else:
                 evidence_by_mode[mode] = await run_parallel()
@@ -139,7 +142,7 @@ async def run_benchmark(repeats: int) -> None:
     sequential_median = median(sequential_times)
     parallel_median = median(parallel_times)
 
-    print("Offline source-collection benchmark")
+    print(f"Question: {question}")
     print("Simulated delays: wiki=0.1s, arxiv=0.2s, web=0.3s")
     print("Caching disabled; no network calls or synthesis.")
     print(f"Measured runs per mode: {repeats}")
@@ -156,6 +159,24 @@ async def run_benchmark(repeats: int) -> None:
     print()
     print(f"Median speedup: {sequential_median / parallel_median:.2f}x")
     print("Evidence matched in every comparison.")
+    return sequential_median, parallel_median
+
+
+async def run_benchmark(repeats: int) -> None:
+    questions = json.loads(QUESTIONS_PATH.read_text(encoding="utf-8"))["questions"]
+    if not questions:
+        raise ValueError("The sample question dataset must not be empty.")
+    print("Offline source-collection benchmark: supplied sample questions")
+    print("All three sources are measured for every question, regardless of expected_sources tags.")
+    results = []
+    for sample in questions:
+        print(f"\nSample {sample['id']}")
+        sequential, parallel = await run_question(sample["text"], repeats)
+        results.append((sample["id"], sequential, parallel))
+    print("\n| Sample | Sequential median (s) | Parallel median (s) | Speedup |")
+    print("|---|---:|---:|---:|")
+    for sample_id, sequential, parallel in results:
+        print(f"| {sample_id} | {sequential:.4f} | {parallel:.4f} | {sequential / parallel:.2f}x |")
 
 
 def main() -> None:
