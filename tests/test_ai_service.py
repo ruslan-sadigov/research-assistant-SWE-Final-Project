@@ -1,4 +1,5 @@
 import asyncio
+import json
 import threading
 from contextlib import suppress
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -662,3 +663,68 @@ async def test_final_arxiv_failure_persists_retry_after_without_sleep(dummy_sett
                 await service.fetch_sources("arxiv", "query", client=client)
     sleep.assert_not_awaited()
     assert float((tmp_path / "limiter/retry-after-until").read_text()) == 160.0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("retry", [False, True])
+async def test_tavily_public_adapter_request_mapping_and_retry(
+    dummy_settings, monkeypatch, caplog, retry
+):
+    monkeypatch.setenv("WEB_SEARCH_PROVIDER", "tavily")
+    monkeypatch.setenv("TAVILY_API_KEY", "tvly-offline-test-key")
+    bodies = []
+
+    def handler(request):
+        assert request.method == "POST"
+        assert str(request.url) == "https://api.tavily.com/search"
+        bodies.append(json.loads(request.content))
+        if retry and len(bodies) == 1:
+            return httpx.Response(503)
+        return httpx.Response(
+            200,
+            json={
+                "results": [
+                    {
+                        "title": "Solar cells",
+                        "url": "https://example.com/solar",
+                        "content": "Light becomes electricity",
+                    },
+                    {"title": "Missing URL", "content": "Skip this"},
+                ]
+            },
+        )
+
+    service = AIService(dummy_settings, transport_factory=lambda: httpx.MockTransport(handler))
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        async with service.open_source_client() as client:
+            sources = await service.fetch_sources("web", "solar energy", client=client)
+    assert len(bodies) == (2 if retry else 1)
+    assert all(
+        body == {"api_key": "tvly-offline-test-key", "query": "solar energy", "max_results": 3}
+        for body in bodies
+    )
+    assert len(sources) == 1
+    assert sources[0].origin == "web"
+    assert sources[0].snippet == "Light becomes electricity"
+    assert "tvly-offline-test-key" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_tavily_unauthorized_not_retried(dummy_settings, monkeypatch, caplog):
+    monkeypatch.setenv("WEB_SEARCH_PROVIDER", "tavily")
+    monkeypatch.setenv("TAVILY_API_KEY", "tvly-offline-test-key")
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        return httpx.Response(401, json={"detail": {"error": "Unauthorized"}})
+
+    service = AIService(dummy_settings, transport_factory=lambda: httpx.MockTransport(handler))
+    with patch("asyncio.sleep", new_callable=AsyncMock) as sleep:
+        async with service.open_source_client() as client:
+            with pytest.raises(ProviderError):
+                await service.fetch_sources("web", "query", client=client)
+    assert len(requests) == 1
+    sleep.assert_not_awaited()
+    assert "http_status=401" in caplog.text
+    assert "tvly-offline-test-key" not in caplog.text
