@@ -2,74 +2,249 @@
 
 [![CI](https://github.com/ruslan-sadigov/research-assistant-SWE-Final-Project/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ruslan-sadigov/research-assistant-SWE-Final-Project/actions/workflows/ci.yml)
 
+A command-line research assistant that collects evidence from Wikipedia, arXiv,
+and web search concurrently, then generates an answer with numbered references.
+It includes per-source deadlines, retries, persistent SQLite caching, and partial
+failure handling. Successful sources remain usable when another source fails.
+
 ## Setup
 
-Requires uv and Python 3.12. Run commands from the project root.
+Install uv and use Python 3.12. Run the commands below from the project root;
+examples use PowerShell. Docker Desktop with Linux containers is needed only for
+Docker commands.
 
 ```powershell
 uv sync --locked
 ```
 
-## Run the offline demo
+This creates `.venv` and installs the project and development dependencies from
+`uv.lock`. You do not need to activate the environment when using `uv run`.
 
-No API keys required.
+If you do not already have a local `.env`, create it:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Edit `.env` and fill in the keys for the tested Gemini/Tavily setup:
+
+```dotenv
+LLM_PROVIDER=gemini
+LLM_MODEL=gemini-3.5-flash-lite
+GOOGLE_API_KEY=your-google-api-key
+WEB_SEARCH_PROVIDER=tavily
+TAVILY_API_KEY=your-tavily-api-key
+```
+
+Obtain credentials from [Google AI Studio](https://aistudio.google.com/) and
+[Tavily](https://app.tavily.com/). The model above was verified on 2026-09-16;
+choose a model available to your account and check its current quota. Wikipedia
+and arXiv need no API keys. Gemini synthesis needs its key even when web search
+is not selected. Other LLM provider adapters may need additional SDK dependencies.
+
+Keep `.env` out of Git. It is also excluded from Docker builds. To use the same
+file with Docker, keep values unquoted and place comments on separate lines.
+Existing shell environment variables take precedence over `.env` for local runs.
+
+### Application settings
+
+Defaults are provided in [.env.example](.env.example).
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `LOG_LEVEL` | `INFO` | Logging verbosity |
+| `MAX_QUESTION_LENGTH` | `2000` | Maximum question length |
+| `PER_SOURCE_TIMEOUT_SECONDS` | `10` | Deadline for each source, including retries and limiter waits |
+| `MAX_SOURCES_PER_QUERY` | `3` | Maximum results requested per source |
+| `RETRY_MAX_ATTEMPTS` | `3` | Maximum attempts, including the initial call |
+| `RETRY_INITIAL_DELAY_SECONDS` | `0.5` | Initial retry backoff |
+| `RETRY_MAX_DELAY_SECONDS` | `4` | Backoff cap; server Retry-After may require a longer wait |
+| `CACHE_TTL_SECONDS` | `86400` | Evidence cache lifetime in seconds |
+| `DATABASE_URL` | blank | Use the default local SQLite file |
+
+## Run the assistant
+
+```powershell
+uv run python -m researcher --help
+uv run python -m researcher ask "Photovoltaic effect" --sources wiki,arxiv,web
+uv run python -m researcher ask "How do solar panels convert sunlight into electricity?" --sources web --no-cache
+```
+
+`--sources` accepts `wiki`, `arxiv`, and `web`, separated by commas. Omitting it
+selects all three. Output includes the question, answer, numbered references,
+and any warnings. Questions must be nonempty and within the configured limit.
+
+| Exit code | Meaning |
+|---|---|
+| `0` | An answer was produced, possibly with partial-source warnings |
+| `1` | Research failed or no answer could be produced |
+| `2` | Invalid arguments, input, or configuration |
+
+### Cache behavior
+
+SQLite is created automatically at
+`~/.cache/research-assistant/sources.sqlite3`; no database server is required.
+To use a project-local file, set `DATABASE_URL=sqlite:///.cache/sources.sqlite3`.
+See [cache documentation](docs/caching.md) for details.
+
+Run the same question twice without `--no-cache` to check `cache_hit=True` in the
+logs. The cache stores source evidence, not generated answers: synthesis still
+runs on each invocation. `--no-cache` bypasses evidence reads and writes, but
+arXiv rate limiting remains active.
+
+### Offline demo
+
+The supplied demo requires no API keys or network access:
 
 ```powershell
 uv run python demo_ai.py --offline --limit 5
 ```
 
-## Run tests
+This is the instructor-provided demo. To exercise the application's actual CLI
+with offline provider responses, run the sample-question integration tests:
 
 ```powershell
-uv run python -m pytest -v
+uv run python -m pytest tests/test_sample_questions.py -v
 ```
 
-## Check formatting and linting
+## Tests and code quality
 
-These commands do not modify code:
+Tests use simulated providers or mock HTTP and require no API credentials.
 
 ```powershell
-uv run isort --check-only .
-uv run black --check .
+uv run python -m pytest -v --cov=researcher --cov-report=term-missing --cov-fail-under=60
 uv run ruff check .
+uv run black --check .
+uv run isort --check-only .
+uv run mypy src/researcher
 ```
 
-## Apply formatting
+Apply formatting and import sorting when needed:
 
 ```powershell
 uv run isort .
 uv run black .
 ```
 
-## Run with Docker
+CI runs lint, formatting, import sorting, type checking, tests with a 60% coverage
+threshold, and Docker checks. Its runtime smoke test verifies cache persistence
+across two containers with networking disabled. Live benchmarks are manual.
+The four required PR checks are `lint`, `typecheck`, `test`, and `docker`; merge
+only after they pass under the repository's branch protection rules.
 
-Start Docker Desktop, then build:
+## Docker
 
-```powershell
-docker build -t research-assistant .
-```
-
-Run the offline demo:
-
-```powershell
-docker run --rm research-assistant
-```
-
-Run tests:
+### Build and run
 
 ```powershell
-docker run --rm research-assistant uv run --locked python -m pytest -v
+docker build --target runtime -t research-assistant:runtime .
+docker run --rm research-assistant:runtime
+docker run --rm --env-file .env research-assistant:runtime ask "Photovoltaic effect" --sources wiki,arxiv,web --no-cache
 ```
 
-Run formatting and lint checks:
+Running the image without arguments prints help. The runtime starts the research
+CLI as a non-root user and contains installed application packages and production
+dependencies. It does not contain uv or the development tools.
+
+### Persist the cache
 
 ```powershell
-docker run --rm research-assistant uv run --locked isort --check-only .
-docker run --rm research-assistant uv run --locked black --check .
-docker run --rm research-assistant uv run --locked ruff check .
+docker volume create research-assistant-cache
+docker run --rm --env-file .env --env DATABASE_URL= --mount type=volume,source=research-assistant-cache,target=/home/appuser/.cache/research-assistant research-assistant:runtime ask "Photovoltaic effect" --sources wiki
 ```
 
-Rebuild the image after changing code or dependencies.
+Repeat the second command to check a cache hit. The empty `DATABASE_URL` override
+uses the container's default path instead of a possible Windows path in `.env`.
+The volume preserves SQLite evidence and arXiv pacing state between containers.
+Host and container limiters are separate unless they share storage; avoid running
+live arXiv checks simultaneously on the host and in Docker.
+
+### Test image
+
+Build the separate test target to run tests and development tools:
+
+```powershell
+docker build --target test -t research-assistant:test .
+docker run --rm --network none research-assistant:test
+docker run --rm --network none research-assistant:test uv run --locked --no-sync ruff check .
+docker run --rm --network none research-assistant:test uv run --locked --no-sync black --check .
+docker run --rm --network none research-assistant:test uv run --locked --no-sync isort --check-only .
+docker run --rm --network none research-assistant:test uv run --locked --no-sync mypy src/researcher
+```
+
+Rebuild after code or dependency changes. The runtime image measured
+**218.67 MB (218,667,271 bytes)** on 2026-09-16, below the 250 MB bonus target.
+That integration build passed 255 Linux tests with 97.87% application coverage;
+these are dated measurements, not a claim about the latest test count.
+Base image tags are mutable, so future builds may differ. Measure your image:
+
+```powershell
+docker image inspect research-assistant:runtime --format '{{.Size}}'
+```
+
+See [Docker verification](docs/docker.md) for the recorded build and live results.
+
+## Sequential versus parallel collection
+
+Run the repeatable offline benchmark over all five supplied questions:
+
+```powershell
+uv run python benchmarks/benchmark_sources.py --repeats 5
+```
+
+With simulated delays of 0.1, 0.2, and 0.3 seconds, recorded sequential medians
+were 0.623–0.628 seconds and parallel medians were 0.312–0.314 seconds, a
+**1.99–2.00x** speedup. This demonstrates overlapping waits, not live API speed.
+See [offline methodology and results](docs/concurrency-benchmark.md).
+
+The separate live benchmark uses actual sources and consumes web-search quota,
+with caching disabled and no LLM synthesis:
+
+```powershell
+uv run python benchmarks/benchmark_live_sources.py --repeats 1
+```
+
+One repeat runs one sequential/parallel pair for each of the five questions.
+Results overwrite `docs/live-benchmark-results.json`; use `--output` to preserve
+a separate run. Recorded on 2026-09-16:
+
+| Topic | Sequential (s) | Parallel (s) | Speedup |
+|---|---:|---:|---:|
+| Photosynthesis | 6.009 | 3.616 | 1.66x |
+| Long context windows | 4.411 | 5.596 | 0.79x |
+| Financial crisis | 6.521 | 3.624 | 1.80x |
+| Fusion energy | 4.550 | 4.343 | 1.05x |
+| CRISPR-Cas9 | 7.044 | 3.868 | 1.82x |
+
+Parallel was faster in four of five pairs. Both modes returned the same URLs,
+with three arXiv and three web results per question; Wikipedia returned no
+matches. One pair per question is exploratory evidence, not a stable performance
+guarantee. See [live methodology and raw results](docs/live-benchmark.md).
+
+## Known limitations
+
+- Full questions may produce no Wikipedia search matches. Short topic queries
+  such as `Photovoltaic effect` worked in live checks. There is no query-rewriting
+  fallback; other selected sources can still supply evidence.
+- Provider outages, quotas, and rate limiting affect results and latency. Source
+  collection may succeed while synthesis fails; retrieved evidence is still
+  displayed. No automatic fallback LLM is configured.
+- Source deadlines include arXiv pacing, redirects, and retries, so a waiting
+  request can time out even when the provider is reachable.
+- Citations identify retrieved evidence; they do not guarantee factual accuracy.
+
+## Design and supporting documents
+
+The CLI creates the Researcher service, which delegates parallel collection to
+SourceOrchestrator and synthesis to AIService. AIService wraps the supplied
+`ai.*` functions with retries and shared HTTP connections. SourceCache applies
+TTL rules over SQLite storage. No separate HTTP server or frontend is required.
+
+- [Live integration checks](docs/live-integration.md)
+- [AI service and arXiv handling](docs/ai-service.md)
+- [Caching](docs/caching.md)
+- [Web-search setup](docs/web-search.md)
+- [Team responsibilities](docs/Research-Assistant-Team-Plan.md)
 
 ## Contributing
 
@@ -112,7 +287,8 @@ Before committing, run:
 uv run isort .
 uv run black .
 uv run ruff check .
-uv run python -m pytest -v
+uv run mypy src/researcher
+uv run python -m pytest -v --cov=researcher --cov-report=term-missing --cov-fail-under=60
 uv run python demo_ai.py --offline --limit 5
 git diff
 git status
