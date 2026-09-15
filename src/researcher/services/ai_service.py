@@ -14,6 +14,7 @@ from ai.providers.base import ProviderError
 from ai.schemas import AnswerWithCitations, Source
 from researcher.config import Settings
 from researcher.models import SourceName
+from researcher.services.arxiv_limit import ArxivLimiter
 
 logger = logging.getLogger(__name__)
 T = TypeVar("T")
@@ -124,6 +125,7 @@ class RetryingTransport(httpx.AsyncBaseTransport):
     def __init__(self, transport: httpx.AsyncBaseTransport, settings: Settings):
         self._transport = transport
         self._settings = settings
+        self._arxiv_limiter = ArxivLimiter()
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         body = await request.aread()
@@ -140,7 +142,13 @@ class RetryingTransport(httpx.AsyncBaseTransport):
             finally:
                 await response.aclose()
 
-        return await _retry(send, self._settings, "http", http_operation=True)
+        async def paced_send() -> httpx.Response:
+            if request.url.host in {"arxiv.org", "www.arxiv.org", "export.arxiv.org"}:
+                async with self._arxiv_limiter.request_slot():
+                    return await send()
+            return await send()
+
+        return await _retry(paced_send, self._settings, "http", http_operation=True)
 
     async def aclose(self) -> None:
         await self._transport.aclose()

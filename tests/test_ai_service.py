@@ -11,6 +11,21 @@ from researcher.config import Settings
 from researcher.services.ai_service import AIService
 
 
+@pytest.fixture(autouse=True)
+def isolated_arxiv_limiter(tmp_path, monkeypatch):
+    from researcher.services.arxiv_limit import ArxivLimiter
+
+    now = [100.0]
+
+    async def advance(seconds):
+        now[0] += seconds
+
+    monkeypatch.setattr(
+        "researcher.services.ai_service.ArxivLimiter",
+        lambda: ArxivLimiter(tmp_path / "limiter", clock=lambda: now[0], sleep=advance),
+    )
+
+
 @pytest.fixture
 def dummy_settings():
     return Settings(

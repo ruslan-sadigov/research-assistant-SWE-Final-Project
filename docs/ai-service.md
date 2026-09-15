@@ -121,3 +121,41 @@ Offline tests cover HTTP and HTTPS identifiers, non-retry behavior, safe error
 messages, and integration through the orchestrator and researcher. The supplied
 `ai/` module is unchanged. Report the parser limitation to the instructor.
 See the [official error-feed documentation](https://info.arxiv.org/help/api/user-manual.html#34-errors).
+
+
+## arXiv request pacing
+
+All requests to `arxiv.org`, `www.arxiv.org`, and `export.arxiv.org` acquire an
+arXiv-only slot in the retry transport. The slot spans request transmission,
+response-body consumption, and response closure. Retries and redirects each
+acquire their own slot. Wikipedia and web-search requests bypass this limiter.
+
+The limiter conservatively waits three seconds after the previous attempt
+finishes before starting another. It uses a nonblocking OS file lock and a
+persisted timestamp under `~/.cache/research-assistant/arxiv/`. Separate service
+instances and CLI processes using that same local directory share the limit.
+Windows uses byte-range locking; Linux/macOS use `flock`. No dependency was added.
+Keep the directory on local disk and do not delete its lock file while running.
+
+Waiting yields to the event loop and remains inside the existing per-source
+deadline. Cancellation releases the lock; a cancelled in-flight request still
+records its completion time. An inaccessible or invalid limiter state fails the
+source instead of sending an unpaced request. A process killed abruptly releases
+its OS lock; the persisted start timestamp provides spacing for its successor,
+but cannot establish when a remote server stopped processing the killed request.
+
+This coordinates local processes sharing one directory, not different user
+accounts, machines, or containers with separate filesystems. Team members must
+still coordinate live arXiv usage: the documented limit applies across machines
+under their control. State uses wall-clock time to work across processes and
+reboots; system-clock jumps can affect pacing, so keep system time synchronized.
+`--no-cache` bypasses evidence storage, not this limiter.
+
+The three-second wait is independent of retry backoff and may mean that not all
+configured retries fit inside the ten-second deadline. HTTP-to-HTTPS redirects
+also consume a slot. `Retry-After` handling remains a separate next step.
+
+Offline tests cover spacing across instances, failed attempts, task cancellation,
+deadlines, corrupted state, cross-process exclusion, and transport retries and
+redirects. Local verification exercised Windows locking; Linux locking is to be
+verified by CI. See [arXiv API rate limits](https://info.arxiv.org/help/api/tou.html#rate-limits).
