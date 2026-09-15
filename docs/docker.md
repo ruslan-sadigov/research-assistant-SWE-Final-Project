@@ -1,137 +1,118 @@
-# Multi-stage Docker setup
+# Docker CLI integration
 
-## Status
+## Build
 
-The Dockerfile defines builder, test, and runtime stages. This document records
-the current design and will be updated after application integration.
-
-The current multi-stage build was verified on 2026-09-10. Both targets build,
-all 102 tests pass in the test image, and the runtime image is 193.23 MB.
-The runtime still starts the supplied offline demo. Repeat these checks after
-the real CLI, provider dependencies, and persistent storage are integrated.
-
-## Stages
-
-| Stage | Purpose | Contents |
-|---|---|---|
-| `builder` | Install runtime dependencies and application packages | Python 3.12, uv, source files, and `/app/.venv` without development dependencies |
-| `test` | Run tests and development checks | Builder contents, repository files, and development dependencies |
-| `runtime` | Run the application with fewer installed tools | Fresh Python 3.12 image, the builder's installed environment, demo script, and sample data |
-
-The test stage inherits from the builder. The runtime stage starts fresh and
-copies only the installed virtual environment and required demo assets; it
-does not inherit test tools or uv's build cache. Runtime is the final stage,
-so a build without `--target` selects it.
-
-## Installation decisions
-
-- Copy `pyproject.toml` and `uv.lock` before source files to cache dependency
-  installation separately from application changes.
-- Use `uv sync --locked` to require a consistent lockfile during builds.
-- Use `--no-dev` in the builder to omit development dependencies from runtime.
-- Use `--no-install-project` until application source files are available.
-- Use `--no-editable` when installing the project so runtime imports do not
-  depend on the original `src/` directory. Both `researcher` and `ai` are
-  installed according to the project build configuration.
-- The test target runs uv with `--no-sync`, using the environment prepared
-  during the build without modifying it at container startup.
-- `UV_LINK_MODE=copy` avoids relying on links to the installation cache.
-- `UV_PYTHON_DOWNLOADS=never` requires the Python interpreter supplied by the
-  base image.
-
-## Runtime user and filesystem
-
-`useradd --create-home appuser` creates a regular Linux user inside the image.
-`USER appuser` makes the application run as that user instead of root. This is
-independent of the developer's Windows or GitHub account.
-
-The copied application files are root-owned and readable by `appuser`. The
-current demo needs no writable application directory. SQLite integration must
-provide a writable data directory or volume with appropriate ownership; do
-not assume `appuser` can create a database under `/app`.
-
-The runtime prepends `/app/.venv/bin` to `PATH`, disables Python bytecode writes,
-and enables unbuffered output. The virtual environment is copied to the same
-absolute path where it was built, and both stages use Python 3.12 slim images.
-
-## Build and verify
-
-Run from the project root with Docker Desktop running Linux containers.
-
-Build the test and runtime targets:
+Run from the project root with Docker Desktop using Linux containers:
 
 ```powershell
 docker build --target test -t research-assistant:test .
 docker build --target runtime -t research-assistant:runtime .
 ```
 
-Run the test suite and development checks:
+The builder installs locked production dependencies and non-editable application
+packages. The test target adds development dependencies and tests. The runtime
+copies only the installed environment, runs as `appuser`, and starts
+`python -m researcher`. Its default argument is `--help`; it makes no network
+requests when run without arguments. It does not include uv, pytest, demo files,
+or the source checkout.
 
-```powershell
-docker run --rm research-assistant:test
-docker run --rm research-assistant:test uv run --locked --no-sync ruff check .
-docker run --rm research-assistant:test uv run --locked --no-sync black --check .
-docker run --rm research-assistant:test uv run --locked --no-sync isort --check-only .
-```
-
-Run the offline demo and verify installed package imports:
+## Run the real CLI
 
 ```powershell
 docker run --rm research-assistant:runtime
-docker run --rm research-assistant:runtime python -c "import ai, researcher; print('Installed packages import successfully')"
+docker run --rm --env-file .env research-assistant:runtime ask "Photovoltaic effect" --sources wiki,arxiv,web --no-cache
 ```
 
-The runtime image has no uv or pytest. Use the test image for development
-commands. Rebuild after changing application files or dependencies.
+Supply keys only at runtime. `.dockerignore` excludes `.env` from both image
+builds. Docker env files use plain `NAME=value` entries: put comments on separate
+lines and avoid surrounding quotes. Docker does not parse dotenv inline comments
+like python-dotenv does. Keep populated env files out of Git.
 
-## Image size and verification record
+## Persistent cache and arXiv limiter
+
+The image creates `/home/appuser/.cache/research-assistant` owned by its non-root
+user. Mount a named volume there so SQLite evidence and arXiv pacing/cooldown
+state survive container removal:
 
 ```powershell
-docker image ls research-assistant
+docker volume create research-assistant-cache
+docker run --rm --env-file .env --env DATABASE_URL= --mount type=volume,source=research-assistant-cache,target=/home/appuser/.cache/research-assistant research-assistant:runtime ask "Photovoltaic effect" --sources wiki
+```
+
+Run the second command twice. The second run should report `cache_hit=True`.
+Gemini still synthesizes each answer. The empty DATABASE_URL override uses the
+container's default SQLite path instead of a host-specific path from `.env`.
+Docker initializes a fresh named volume from the image directory, including its
+ownership. Existing volumes with different ownership may need separate repair.
+
+Containers using the same volume share the arXiv limiter; the Windows host's
+limiter remains separate. Coordinate host/container live arXiv calls. `--no-cache`
+bypasses evidence storage, not rate limiting. Removing the volume deletes its
+cache and cooldown state; do not remove it while requests are active.
+
+## Offline validation and CI
+
+```powershell
+docker run --rm --network none research-assistant:test
+docker run --rm --network none research-assistant:test uv run --locked --no-sync ruff check .
+docker run --rm --network none research-assistant:test uv run --locked --no-sync black --check .
+docker run --rm --network none research-assistant:test uv run --locked --no-sync isort --check-only .
+docker run --rm --network none --entrypoint python research-assistant:runtime -c "import ai, researcher; from google import genai"
+```
+
+CI runs CLI help and `tests/docker_smoke.py` in two separate runtime containers
+with networking disabled and a shared temporary named volume. The smoke script
+replaces only AI provider functions with deterministic fakes; it exercises the
+installed CLI, orchestration, synthesis wrapper, rendering, and SQLite. The first
+run must fetch; the second must reuse cached sources. The script is mounted
+read-only for testing and is not shipped in the runtime image. CI removes its
+temporary volume afterwards. No API keys are required.
+
+The existing test target also verifies Linux file locking for arXiv. The old
+standalone offline demo can still run on the host or in the test image.
+
+## Verification record
+
+Verified on 2026-09-16 (Asia/Baku), Docker Desktop linux/amd64, Python 3.12.14:
+
+| Check | Result |
+|---|---|
+| Test and runtime builds | Passed |
+| Linux test suite | 255 passed in 2.53 seconds |
+| Linux application coverage | 97.87% |
+| Linux quality checks | Ruff, Black, isort, and mypy passed |
+| Offline installed CLI | Passed |
+| Separate-container SQLite persistence | First run miss, second run hit |
+| Runtime UID | 1000 (non-root) |
+| Runtime imports | ai, researcher, and google.genai available |
+| Runtime exclusions | uv, pytest, and /app/.env absent |
+| Runtime image size | 218,667,271 bytes (218.67 MB), below 250 MB |
+| Test image size (initial integration build) | 569,654,118 bytes (569.65 MB) |
+
+A live container query for `Photovoltaic effect` retrieved three results each
+from Wikipedia (2.388 s), arXiv (3.533 s), and Tavily (0.527 s). Collection took
+3.636 seconds and produced eight unique sources. Gemini returned HTTP 200,
+references were printed, and the container exited with code 0. This diagnostic
+used a ten-second source deadline and one attempt per operation. Credentials
+were loaded locally and passed by environment-variable names, not baked into
+the image or printed. No evidence volume was used for that uncached live run.
+
+CI remains offline. Its SQLite check uses a fresh temporary named volume and
+removes that volume afterwards. The checked runtime image ID is
+`sha256:88cad388ab0c1f29ada7460ab6ea5dc02b29d2f1a7ccc4fee77277454f7899ca`.
+
+The Linux mypy check exposed an error in instructor-owned
+`ai/providers/openai.py`. A module-specific mypy override suppresses diagnostics
+inside `ai` while retaining imported type information and checking our own code.
+No instructor files were modified.
+The historical 2026-09-10 image was 193.23 MB with 102 tests and the old demo entry
+point; those measurements do not describe this integrated image.
+
+The runtime size target remains below 250,000,000 bytes. Measure it with:
+
+```powershell
 docker image inspect research-assistant:runtime --format '{{.Size}}'
 ```
 
-The inspect command reports bytes. Use 250,000,000 bytes as a conservative
-threshold for the bonus's 250 MB runtime limit. Multi-stage construction does
-not guarantee meeting it; actual installed dependencies determine the size.
-
-| Check | Current result |
-|---|---|
-| Test target build | Passed |
-| Runtime target build | Passed |
-| Tests in test image | 102 passed in 0.74 s |
-| Lint and formatting checks in test image | Ruff, Black, and isort passed |
-| Offline runtime demo | All five sample questions completed |
-| Installed package imports in runtime | `ai` and `researcher` imported successfully |
-| Runtime image size | 193,229,678 bytes (193.23 MB), below 250,000,000 bytes |
-| Test image size | 405,444,608 bytes (405.44 MB); development tools included |
-| Runtime user | UID 1000, non-root |
-| Runtime development-tool exclusion | uv executable and pytest module absent |
-
-Measurements used Docker Desktop Linux containers on a Windows host,
-`linux/amd64`, and Python 3.12.14 inside the images. Sizes are Docker image
-inspect `.Size` values in decimal MB, not compressed download sizes. Build
-cache was used; this was not a clean-cache build performance measurement.
-
-Verified image IDs:
-
-- Runtime: `sha256:0ca4f9363bf10a9fdb7bdc0066513ec931b572bb8c684d0326e383fa1e9ec225`
-- Test: `sha256:33832ccfa95f9bfea1556886d43ff65b95f92e30aee5d251b490146b2f68aab5`
-
-These results establish the current baseline only. Rebuild both targets and
-update this record after integration; dependency changes can affect image size.
-
-## Final integration work
-
-- Replace the demo startup command with the agreed research CLI entry point.
-- Add and verify writable SQLite storage and persistence across container runs.
-- Supply provider credentials at runtime, keeping populated `.env` files out
-  of the image and repository.
-- Add type-checking and coverage commands to CI when those tools are configured.
-- Pin the uv image version or digest; `uv:latest` currently changes over time.
-- Rebuild and remeasure after provider and database dependencies are finalized.
-- Verify the real integrated workflow in addition to the offline demo.
-- Add the final image size to the README before submission, as required by the
-  bonus. Keep interim documentation here until that final update.
-
-The README is intentionally unchanged at this stage.
+The Python base tag and `uv:latest` remain mutable. Pinning their versions/digests
+and publishing the final README are separate follow-up tasks. README is unchanged.
