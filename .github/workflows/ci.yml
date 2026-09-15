@@ -105,10 +105,19 @@ jobs:
 
       - name: Check installed packages
         run: >
-          docker run --rm --network none research-assistant:runtime
-          python -c "import ai; import researcher"
+          docker run --rm --network none --entrypoint python research-assistant:runtime
+          -c "import ai; import researcher; from google import genai"
 
-      - name: Run offline demo
-        run: >
-          docker run --rm --network none research-assistant:runtime
-          python demo_ai.py --offline --limit 5
+      - name: Check CLI help
+        run: docker run --rm --network none research-assistant:runtime
+
+      - name: Verify offline CLI and cache persistence
+        run: |
+          docker volume create research-assistant-ci-cache
+          trap 'docker volume rm research-assistant-ci-cache' EXIT
+          for mode in populate reuse; do
+            docker run --rm --network none --entrypoint python \
+              --mount type=volume,source=research-assistant-ci-cache,target=/home/appuser/.cache/research-assistant \
+              --mount "type=bind,source=$PWD/tests/docker_smoke.py,target=/tmp/docker_smoke.py,readonly" \
+              research-assistant:runtime /tmp/docker_smoke.py "$mode"
+          done

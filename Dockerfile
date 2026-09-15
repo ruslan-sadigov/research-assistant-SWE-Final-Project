@@ -34,19 +34,18 @@ CMD ["uv", "run", "--locked", "--no-sync", "python", "-m", "pytest", "-v"]
 FROM python:3.12-slim AS runtime
 
 ENV PATH="/app/.venv/bin:$PATH" \
+    HOME="/home/appuser" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-RUN useradd --create-home appuser
+RUN useradd --create-home appuser \
+    && install -d -o appuser -g appuser /home/appuser/.cache/research-assistant
 
 COPY --from=builder /app/.venv /app/.venv
 
-# Temporary entry point until the real research CLI is integrated.
-COPY demo_ai.py ./
-COPY data/ ./data/
-
 USER appuser
 
-CMD ["python", "demo_ai.py", "--offline", "--limit", "5"]
+ENTRYPOINT ["python", "-m", "researcher"]
+CMD ["--help"]
