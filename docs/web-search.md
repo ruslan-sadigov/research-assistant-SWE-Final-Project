@@ -42,15 +42,20 @@ uv run python -m researcher ask "Photovoltaic effect" --sources wiki,arxiv,web
 Repeat without `--no-cache` to check cache hits. Cached evidence skips new source
 requests, but Gemini synthesis still runs for each invocation.
 
-## Current verification
+## Verification (2026-09-16)
 
-On 2026-09-15, one live web-only collection with retries disabled returned
-HTTP 401 and zero results in 0.54 seconds. No Gemini request was made. The local
-key did not match the prefix used in Tavily's documented examples; its contents
-were not printed or copied into project files. Replace it with a key from the
-Tavily dashboard and repeat verification before marking live setup complete.
+After the local credential was corrected, the agent's web-only live check
+returned three results in 1.35 seconds with no warning. It made no Gemini call.
+The earlier 2026-09-15 check returned HTTP 401; that authentication blocker is
+resolved.
+
+The user then verified the real CLI with the solar-panel question above:
+Tavily returned HTTP 200 and three sources in 0.530 seconds; Gemini returned
+HTTP 200 and the CLI printed an answer with three web references.
+
+A subsequent user-run combined query, `Photovoltaic effect`, succeeded with all
+three providers. See [live integration results](live-integration.md).
 
 Offline tests exercise the actual supplied Tavily adapter with mock HTTP:
 request payload, result mapping, missing-URL filtering, transient retries,
-and non-retry of 401 responses. These establish application behavior but do
-not verify that a real credential is accepted by the service.
+and non-retry of 401 responses. No keys are included in tests or documentation.
