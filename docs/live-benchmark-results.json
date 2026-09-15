@@ -1,0 +1,401 @@
+{
+  "started_utc": "2026-09-15T20:42:47.142539+00:00",
+  "repeats": 1,
+  "per_source_timeout_seconds": 10.0,
+  "retry_max_attempts": 3,
+  "max_sources_per_query": 3,
+  "cache": false,
+  "synthesis": false,
+  "runs": [
+    {
+      "sample": "q1",
+      "question": "What is photosynthesis and what are its main stages?",
+      "repeat": 1,
+      "mode": "sequential",
+      "elapsed_seconds": 6.008511699999872,
+      "unique_results": 6,
+      "outcomes": [
+        {
+          "source": "wiki",
+          "status": "empty",
+          "results": 0,
+          "elapsed_seconds": 0.47756920000028913,
+          "urls": []
+        },
+        {
+          "source": "arxiv",
+          "status": "ok",
+          "results": 3,
+          "elapsed_seconds": 3.919631499999923,
+          "urls": [
+            "http://arxiv.org/abs/1805.06617v1",
+            "http://arxiv.org/abs/2504.17803v1",
+            "http://arxiv.org/abs/2510.09791v3"
+          ]
+        },
+        {
+          "source": "web",
+          "status": "ok",
+          "results": 3,
+          "elapsed_seconds": 1.37676620000002,
+          "urls": [
+            "https://www.khanacademy.org/science/ap-biology/cellular-energetics/photosynthesis/v/breaking-down-photosynthesis-stages",
+            "https://en.wikipedia.org/wiki/Photosynthesis",
+            "https://education.nationalgeographic.org/resource/photosynthesis"
+          ]
+        }
+      ]
+    },
+    {
+      "sample": "q1",
+      "question": "What is photosynthesis and what are its main stages?",
+      "repeat": 1,
+      "mode": "parallel",
+      "elapsed_seconds": 3.61593719999928,
+      "unique_results": 6,
+      "outcomes": [
+        {
+          "source": "wiki",
+          "status": "empty",
+          "results": 0,
+          "elapsed_seconds": 0.6920319999999265,
+          "urls": []
+        },
+        {
+          "source": "arxiv",
+          "status": "ok",
+          "results": 3,
+          "elapsed_seconds": 3.4212584000006245,
+          "urls": [
+            "http://arxiv.org/abs/1805.06617v1",
+            "http://arxiv.org/abs/2504.17803v1",
+            "http://arxiv.org/abs/2510.09791v3"
+          ]
+        },
+        {
+          "source": "web",
+          "status": "ok",
+          "results": 3,
+          "elapsed_seconds": 0.48287970000001224,
+          "urls": [
+            "https://www.khanacademy.org/science/ap-biology/cellular-energetics/photosynthesis/v/breaking-down-photosynthesis-stages",
+            "https://en.wikipedia.org/wiki/Photosynthesis",
+            "https://education.nationalgeographic.org/resource/photosynthesis"
+          ]
+        }
+      ]
+    },
+    {
+      "sample": "q2",
+      "question": "How do transformer-based language models handle long context windows?",
+      "repeat": 1,
+      "mode": "parallel",
+      "elapsed_seconds": 5.595901099999537,
+      "unique_results": 6,
+      "outcomes": [
+        {
+          "source": "wiki",
+          "status": "empty",
+          "results": 0,
+          "elapsed_seconds": 0.5784087000001819,
+          "urls": []
+        },
+        {
+          "source": "arxiv",
+          "status": "ok",
+          "results": 3,
+          "elapsed_seconds": 5.393915800000286,
+          "urls": [
+            "http://arxiv.org/abs/2506.01265v1",
+            "http://arxiv.org/abs/2605.06924v1",
+            "http://arxiv.org/abs/2502.17129v2"
+          ]
+        },
+        {
+          "source": "web",
+          "status": "ok",
+          "results": 3,
+          "elapsed_seconds": 1.2860063999996783,
+          "urls": [
+            "https://www.understandingai.org/p/why-large-language-models-struggle",
+            "https://arxiv.org/html/2311.12351v2",
+            "https://codingscape.com/blog/llms-with-largest-context-windows"
+          ]
+        }
+      ]
+    },
+    {
+      "sample": "q2",
+      "question": "How do transformer-based language models handle long context windows?",
+      "repeat": 1,
+      "mode": "sequential",
+      "elapsed_seconds": 4.410507399999915,
+      "unique_results": 6,
+      "outcomes": [
+        {
+          "source": "wiki",
+          "status": "empty",
+          "results": 0,
+          "elapsed_seconds": 0.28727430000071763,
+          "urls": []
+        },
+        {
+          "source": "arxiv",
+          "status": "ok",
+          "results": 3,
+          "elapsed_seconds": 3.414751399999659,
+          "urls": [
+            "http://arxiv.org/abs/2506.01265v1",
+            "http://arxiv.org/abs/2605.06924v1",
+            "http://arxiv.org/abs/2502.17129v2"
+          ]
+        },
+        {
+          "source": "web",
+          "status": "ok",
+          "results": 3,
+          "elapsed_seconds": 0.5083125999999538,
+          "urls": [
+            "https://www.understandingai.org/p/why-large-language-models-struggle",
+            "https://arxiv.org/html/2311.12351v2",
+            "https://codingscape.com/blog/llms-with-largest-context-windows"
+          ]
+        }
+      ]
+    },
+    {
+      "sample": "q3",
+      "question": "What were the main causes of the 2008 financial crisis?",
+      "repeat": 1,
+      "mode": "sequential",
+      "elapsed_seconds": 6.520516999999927,
+      "unique_results": 6,
+      "outcomes": [
+        {
+          "source": "wiki",
+          "status": "empty",
+          "results": 0,
+          "elapsed_seconds": 0.5205980999999156,
+          "urls": []
+        },
+        {
+          "source": "arxiv",
+          "status": "ok",
+          "results": 3,
+          "elapsed_seconds": 4.131372700000611,
+          "urls": [
+            "http://arxiv.org/abs/1710.05833v2",
+            "http://arxiv.org/abs/1907.07908v4",
+            "http://arxiv.org/abs/0905.0220v1"
+          ]
+        },
+        {
+          "source": "web",
+          "status": "ok",
+          "results": 3,
+          "elapsed_seconds": 1.656250099999852,
+          "urls": [
+            "https://en.wikipedia.org/wiki/2008_financial_crisis",
+            "https://www.acorns.com/learn/investing/what-caused-great-recession-of-2008",
+            "https://www.fdic.gov/media/18636"
+          ]
+        }
+      ]
+    },
+    {
+      "sample": "q3",
+      "question": "What were the main causes of the 2008 financial crisis?",
+      "repeat": 1,
+      "mode": "parallel",
+      "elapsed_seconds": 3.6241060000002108,
+      "unique_results": 6,
+      "outcomes": [
+        {
+          "source": "wiki",
+          "status": "empty",
+          "results": 0,
+          "elapsed_seconds": 0.2681832000007489,
+          "urls": []
+        },
+        {
+          "source": "arxiv",
+          "status": "ok",
+          "results": 3,
+          "elapsed_seconds": 3.430808799999795,
+          "urls": [
+            "http://arxiv.org/abs/1710.05833v2",
+            "http://arxiv.org/abs/1907.07908v4",
+            "http://arxiv.org/abs/0905.0220v1"
+          ]
+        },
+        {
+          "source": "web",
+          "status": "ok",
+          "results": 3,
+          "elapsed_seconds": 0.5005718000002162,
+          "urls": [
+            "https://en.wikipedia.org/wiki/2008_financial_crisis",
+            "https://www.acorns.com/learn/investing/what-caused-great-recession-of-2008",
+            "https://www.fdic.gov/media/18636"
+          ]
+        }
+      ]
+    },
+    {
+      "sample": "q4",
+      "question": "What is the current state of fusion energy research?",
+      "repeat": 1,
+      "mode": "parallel",
+      "elapsed_seconds": 4.342574699999204,
+      "unique_results": 6,
+      "outcomes": [
+        {
+          "source": "wiki",
+          "status": "empty",
+          "results": 0,
+          "elapsed_seconds": 0.27664330000061454,
+          "urls": []
+        },
+        {
+          "source": "arxiv",
+          "status": "ok",
+          "results": 3,
+          "elapsed_seconds": 4.1323474000000715,
+          "urls": [
+            "http://arxiv.org/abs/1907.09921v2",
+            "http://arxiv.org/abs/astro-ph/0510346v1",
+            "http://arxiv.org/abs/1211.0310v1"
+          ]
+        },
+        {
+          "source": "web",
+          "status": "ok",
+          "results": 3,
+          "elapsed_seconds": 1.996638399999938,
+          "urls": [
+            "https://www.worldscholarsreview.org/article/the-current-state-of-nuclear-fusion-research-a-review-and-assessment-of-leading-technologies",
+            "https://www.belfercenter.org/research-analysis/notes-recent-hype-about-imminence-commercial-fusion-energy",
+            "http://www.iaea.org/newscenter/news/fusion-energy-in-2025-six-global-trends-to-watch"
+          ]
+        }
+      ]
+    },
+    {
+      "sample": "q4",
+      "question": "What is the current state of fusion energy research?",
+      "repeat": 1,
+      "mode": "sequential",
+      "elapsed_seconds": 4.54989359999945,
+      "unique_results": 6,
+      "outcomes": [
+        {
+          "source": "wiki",
+          "status": "empty",
+          "results": 0,
+          "elapsed_seconds": 0.4549745000003895,
+          "urls": []
+        },
+        {
+          "source": "arxiv",
+          "status": "ok",
+          "results": 3,
+          "elapsed_seconds": 3.4003364000000147,
+          "urls": [
+            "http://arxiv.org/abs/1907.09921v2",
+            "http://arxiv.org/abs/astro-ph/0510346v1",
+            "http://arxiv.org/abs/1211.0310v1"
+          ]
+        },
+        {
+          "source": "web",
+          "status": "ok",
+          "results": 3,
+          "elapsed_seconds": 0.5009650000001784,
+          "urls": [
+            "https://www.worldscholarsreview.org/article/the-current-state-of-nuclear-fusion-research-a-review-and-assessment-of-leading-technologies",
+            "https://www.belfercenter.org/research-analysis/notes-recent-hype-about-imminence-commercial-fusion-energy",
+            "http://www.iaea.org/newscenter/news/fusion-energy-in-2025-six-global-trends-to-watch"
+          ]
+        }
+      ]
+    },
+    {
+      "sample": "q5",
+      "question": "How does CRISPR-Cas9 gene editing work at a molecular level?",
+      "repeat": 1,
+      "mode": "sequential",
+      "elapsed_seconds": 7.043569299999945,
+      "unique_results": 6,
+      "outcomes": [
+        {
+          "source": "wiki",
+          "status": "empty",
+          "results": 0,
+          "elapsed_seconds": 0.5160445999999865,
+          "urls": []
+        },
+        {
+          "source": "arxiv",
+          "status": "ok",
+          "results": 3,
+          "elapsed_seconds": 4.690982500000246,
+          "urls": [
+            "http://arxiv.org/abs/1411.4413v2",
+            "http://arxiv.org/abs/0901.0512v4",
+            "http://arxiv.org/abs/2601.07595v3"
+          ]
+        },
+        {
+          "source": "web",
+          "status": "ok",
+          "results": 3,
+          "elapsed_seconds": 1.6440299000005325,
+          "urls": [
+            "https://pmc.ncbi.nlm.nih.gov/articles/PMC8388126",
+            "https://www.integra-biosciences.com/united-states/en/blog/article/what-crispr-cas9-and-how-does-it-work",
+            "https://www.addgene.org/guides/crispr"
+          ]
+        }
+      ]
+    },
+    {
+      "sample": "q5",
+      "question": "How does CRISPR-Cas9 gene editing work at a molecular level?",
+      "repeat": 1,
+      "mode": "parallel",
+      "elapsed_seconds": 3.868333600000369,
+      "unique_results": 6,
+      "outcomes": [
+        {
+          "source": "wiki",
+          "status": "empty",
+          "results": 0,
+          "elapsed_seconds": 0.5525812000005317,
+          "urls": []
+        },
+        {
+          "source": "arxiv",
+          "status": "ok",
+          "results": 3,
+          "elapsed_seconds": 3.6692534000003434,
+          "urls": [
+            "http://arxiv.org/abs/1411.4413v2",
+            "http://arxiv.org/abs/0901.0512v4",
+            "http://arxiv.org/abs/2601.07595v3"
+          ]
+        },
+        {
+          "source": "web",
+          "status": "ok",
+          "results": 3,
+          "elapsed_seconds": 0.48516579999977694,
+          "urls": [
+            "https://pmc.ncbi.nlm.nih.gov/articles/PMC8388126",
+            "https://www.integra-biosciences.com/united-states/en/blog/article/what-crispr-cas9-and-how-does-it-work",
+            "https://www.addgene.org/guides/crispr"
+          ]
+        }
+      ]
+    }
+  ]
+}
