@@ -2,8 +2,11 @@
 
 import asyncio
 import logging
+import math
+import time
 from collections.abc import Awaitable, Callable
 from contextlib import AbstractAsyncContextManager
+from email.utils import parsedate_to_datetime
 from typing import Protocol, TypeVar
 from urllib.parse import urlsplit
 
@@ -83,6 +86,31 @@ def _http_status(exc: BaseException) -> int | None:
     return None
 
 
+def _retry_after_seconds(exc: BaseException) -> float | None:
+    """Read a valid Retry-After without logging arbitrary response headers."""
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, httpx.HTTPStatusError):
+            value = current.response.headers.get("Retry-After", "").strip()
+            if not value:
+                return None
+            try:
+                if value.isascii() and value.isdigit():
+                    seconds = float(value)
+                else:
+                    date = parsedate_to_datetime(value)
+                    if date.tzinfo is None:
+                        return None
+                    seconds = max(0.0, date.timestamp() - time.time())
+                return seconds if math.isfinite(seconds) else None
+            except (ValueError, TypeError, OverflowError):
+                return None
+        current = current.__cause__ or current.__context__
+    return None
+
+
 async def _retry(
     operation: Callable[[], Awaitable[T]],
     settings: Settings,
@@ -110,7 +138,10 @@ async def _retry(
                 if http_operation:
                     raise HTTPRetryExhausted("HTTP retry budget exhausted") from exc
                 raise
-            await asyncio.sleep(delay)
+            server_delay = _retry_after_seconds(exc)
+            wait = max(delay, server_delay or 0.0)
+            logger.debug("AI retry scheduled: operation=%s delay_seconds=%.3f", label, wait)
+            await asyncio.sleep(wait)
             delay = min(delay * 2, settings.retry_max_delay_seconds)
     raise AssertionError("Settings must allow at least one attempt")
 
@@ -144,8 +175,12 @@ class RetryingTransport(httpx.AsyncBaseTransport):
 
         async def paced_send() -> httpx.Response:
             if request.url.host in {"arxiv.org", "www.arxiv.org", "export.arxiv.org"}:
-                async with self._arxiv_limiter.request_slot():
-                    return await send()
+                async with self._arxiv_limiter.request_slot() as slot:
+                    try:
+                        return await send()
+                    except Exception as exc:
+                        slot.retry_after_seconds = _retry_after_seconds(exc) or 0.0
+                        raise
             return await send()
 
         return await _retry(paced_send, self._settings, "http", http_operation=True)

@@ -578,3 +578,87 @@ async def test_arxiv_paper_titled_error_is_valid(dummy_settings):
         sources = await service.fetch_sources("arxiv", "question", client=client)
     assert len(sources) == 1
     assert sources[0].title == "Error"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "header,expected",
+    [
+        ("60", 60.0),
+        ("0", 1.0),
+        ("-5", 1.0),
+        ("1.5", 1.0),
+        ("invalid", 1.0),
+        ("", 1.0),
+        ("Wed, 21 Oct 2015 07:28:00 GMT", 1.0),
+    ],
+)
+async def test_retry_after_controls_wait_without_changing_backoff_cap(
+    dummy_settings, header, expected
+):
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        if len(requests) == 1:
+            return httpx.Response(429, headers={"Retry-After": header})
+        return httpx.Response(200)
+
+    service = AIService(dummy_settings, transport_factory=lambda: httpx.MockTransport(handler))
+    with patch("asyncio.sleep", new_callable=AsyncMock) as sleep:
+        async with service.open_source_client() as client:
+            assert (await client.get("https://example.com")).status_code == 200
+    assert len(requests) == 2
+    sleep.assert_awaited_once_with(expected)
+
+
+def test_retry_after_http_date_and_wrapped_error():
+    from researcher.services.ai_service import _retry_after_seconds
+
+    request = httpx.Request("GET", "https://example.com")
+    response = httpx.Response(
+        503, headers={"Retry-After": "Wed, 21 Oct 2015 07:28:00 GMT"}, request=request
+    )
+    original = httpx.HTTPStatusError("private-value", request=request, response=response)
+    wrapped = ProviderError("private-wrapper")
+    wrapped.__cause__ = original
+    with patch("researcher.services.ai_service.time.time", return_value=1445412420):
+        assert _retry_after_seconds(wrapped) == 60
+    response.headers["Retry-After"] = "Wed, 21 Oct 2015 07:28:00"
+    assert _retry_after_seconds(wrapped) is None
+    response.headers["Retry-After"] = "9" * 400
+    assert _retry_after_seconds(wrapped) is None
+    original.__cause__ = wrapped
+    assert _retry_after_seconds(RuntimeError()) is None
+
+
+@pytest.mark.asyncio
+async def test_retry_after_wait_respects_deadline(dummy_settings):
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        return httpx.Response(429, headers={"Retry-After": "60"})
+
+    service = AIService(dummy_settings, transport_factory=lambda: httpx.MockTransport(handler))
+    async with service.open_source_client() as client:
+        with pytest.raises(TimeoutError):
+            async with asyncio.timeout(0.02):
+                await service.fetch_sources("wiki", "query", client=client)
+    assert len(requests) == 1
+
+
+@pytest.mark.asyncio
+async def test_final_arxiv_failure_persists_retry_after_without_sleep(dummy_settings, tmp_path):
+    service = AIService(
+        dummy_settings.model_copy(update={"retry_max_attempts": 1}),
+        transport_factory=lambda: httpx.MockTransport(
+            lambda request: httpx.Response(429, headers={"Retry-After": "60"})
+        ),
+    )
+    with patch("asyncio.sleep", new_callable=AsyncMock) as sleep:
+        async with service.open_source_client() as client:
+            with pytest.raises(ProviderError):
+                await service.fetch_sources("arxiv", "query", client=client)
+    sleep.assert_not_awaited()
+    assert float((tmp_path / "limiter/retry-after-until").read_text()) == 160.0

@@ -153,9 +153,36 @@ reboots; system-clock jumps can affect pacing, so keep system time synchronized.
 
 The three-second wait is independent of retry backoff and may mean that not all
 configured retries fit inside the ten-second deadline. HTTP-to-HTTPS redirects
-also consume a slot. `Retry-After` handling remains a separate next step.
+also consume a slot. Server-requested cooldowns are described below.
 
 Offline tests cover spacing across instances, failed attempts, task cancellation,
 deadlines, corrupted state, cross-process exclusion, and transport retries and
 redirects. Local verification exercised Windows locking; Linux locking is to be
 verified by CI. See [arXiv API rate limits](https://info.arxiv.org/help/api/tou.html#rate-limits).
+
+
+## Retry-After and shared cooldowns
+
+For retryable HTTP failures, the service reads `Retry-After` as nonnegative whole
+seconds or a timezone-aware HTTP date. It waits for the larger of that delay and
+its exponential backoff. The backoff cap does not shorten a server-requested
+wait. Missing, malformed, or non-finite values fall back to ordinary backoff;
+past dates add no extra delay. Permanent errors remain non-retryable, and the
+last attempt does not sleep or start an extra retry.
+
+The wait remains inside the source deadline, so a long cooldown can produce a
+timeout without another request. For arXiv, the active request slot additionally
+persists a `retry-after-until` timestamp before releasing its OS lock, including
+on the last failed attempt. New service instances or CLI processes sharing the
+limiter directory must respect both that timestamp and the usual three-second
+spacing. Cancelling a waiter does not erase the cooldown. Invalid persisted
+cooldown state fails the source rather than bypassing the limiter.
+
+This header handling covers HTTPX responses used by the source fetchers; it does
+not claim to interpret every provider SDK's rate-limit metadata. Our previous
+live 429 diagnostic did not capture Retry-After, so we do not know whether arXiv
+sent one. These changes were verified offline without additional live requests.
+
+Tests cover seconds, HTTP dates, malformed and past values, delays exceeding the
+backoff cap, cancellation at the deadline, and shared cooldown persistence after
+retry exhaustion. See [HTTP Retry-After semantics](https://www.rfc-editor.org/rfc/rfc9110.html#section-10.2.3).

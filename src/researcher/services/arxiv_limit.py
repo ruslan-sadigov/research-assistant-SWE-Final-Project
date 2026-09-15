@@ -8,6 +8,7 @@ import sys
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
 
@@ -30,6 +31,13 @@ def _try_lock(file: BinaryIO) -> bool:
     return True
 
 
+@dataclass
+class ArxivRequestSlot:
+    """Cooldown to persist before releasing the active request lock."""
+
+    retry_after_seconds: float = 0.0
+
+
 class ArxivLimiter:
     """Serialize requests and leave three seconds after the previous completion.
 
@@ -50,7 +58,7 @@ class ArxivLimiter:
         self._sleep = sleep
 
     @asynccontextmanager
-    async def request_slot(self) -> AsyncIterator[None]:
+    async def request_slot(self) -> AsyncIterator[ArxivRequestSlot]:
         directory = self._directory or Path.home() / ".cache" / "research-assistant" / "arxiv"
         directory.mkdir(parents=True, exist_ok=True)
         # Never replace or unlink this file: all processes must lock the same inode.
@@ -66,16 +74,28 @@ class ArxivLimiter:
                 previous = float(timestamp.read_text(encoding="ascii"))
             except FileNotFoundError:
                 previous = None
-            if previous is not None:
-                if not math.isfinite(previous):
-                    raise ValueError("Invalid arXiv limiter timestamp")
-                remaining = previous + 3.0 - self._clock()
-                if remaining > 0:
-                    await self._sleep(remaining)
+            cooldown = directory / "retry-after-until"
+            try:
+                retry_at = float(cooldown.read_text(encoding="ascii"))
+            except FileNotFoundError:
+                retry_at = 0.0
+            if not math.isfinite(retry_at) or (
+                previous is not None and not math.isfinite(previous)
+            ):
+                raise ValueError("Invalid arXiv limiter timestamp")
+            allowed_at = max(retry_at, previous + 3.0 if previous is not None else 0.0)
+            remaining = allowed_at - self._clock()
+            if remaining > 0:
+                await self._sleep(remaining)
             started = self._clock()
             timestamp.write_text(str(started), encoding="ascii")
+            slot = ArxivRequestSlot()
             try:
-                yield
+                yield slot
             finally:
+                if slot.retry_after_seconds > 0:
+                    cooldown.write_text(
+                        str(self._clock() + slot.retry_after_seconds), encoding="ascii"
+                    )
                 # A cancelled/failed HTTP attempt also consumes a request slot.
                 timestamp.write_text(str(max(started, self._clock())), encoding="ascii")

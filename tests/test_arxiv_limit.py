@@ -9,7 +9,7 @@ import pytest
 
 from researcher.config import Settings
 from researcher.services.ai_service import AIService
-from researcher.services.arxiv_limit import ArxivLimiter
+from researcher.services.arxiv_limit import ArxivLimiter, ArxivRequestSlot
 
 
 @pytest.mark.asyncio
@@ -99,7 +99,7 @@ def test_lock_shared_between_processes(tmp_path):
     script = """
 import asyncio, sys
 from pathlib import Path
-from researcher.services.arxiv_limit import ArxivLimiter
+from researcher.services.arxiv_limit import ArxivLimiter, ArxivRequestSlot
 async def main():
     async with ArxivLimiter(Path(sys.argv[1])).request_slot():
         print('entered', flush=True)
@@ -149,7 +149,7 @@ async def test_transport_gates_arxiv_redirects_and_retries_only():
         @asynccontextmanager
         async def request_slot(self):
             slots.append("entered")
-            yield
+            yield ArxivRequestSlot()
 
     def handler(request):
         requests.append(request)
@@ -171,3 +171,35 @@ async def test_transport_gates_arxiv_redirects_and_retries_only():
             assert (await client.get("http://export.arxiv.org/api/query")).status_code == 200
     assert len(requests) == 4
     assert len(slots) == 3
+
+
+@pytest.mark.asyncio
+async def test_server_cooldown_survives_failure_and_new_instance(tmp_path):
+    with pytest.raises(RuntimeError):
+        async with ArxivLimiter(tmp_path, clock=lambda: 100.0).request_slot() as slot:
+            slot.retry_after_seconds = 60
+            raise RuntimeError("rate limited")
+    assert float((tmp_path / "retry-after-until").read_text()) == 160
+    sleep = AsyncMock()
+    async with ArxivLimiter(tmp_path, clock=lambda: 110.0, sleep=sleep).request_slot():
+        pass
+    sleep.assert_awaited_once_with(50.0)
+
+
+@pytest.mark.asyncio
+async def test_cooldown_deadline_does_not_erase_shared_state(tmp_path):
+    (tmp_path / "retry-after-until").write_text("160")
+    with pytest.raises(TimeoutError):
+        async with asyncio.timeout(0.02):
+            async with ArxivLimiter(tmp_path, clock=lambda: 100.0).request_slot():
+                pytest.fail("sent before cooldown expired")
+    assert (tmp_path / "retry-after-until").read_text() == "160"
+    assert not (tmp_path / "last-request").exists()
+
+
+@pytest.mark.asyncio
+async def test_invalid_cooldown_fails_closed(tmp_path):
+    (tmp_path / "retry-after-until").write_text("nan")
+    with pytest.raises(ValueError):
+        async with ArxivLimiter(tmp_path).request_slot():
+            pytest.fail("sent with invalid cooldown")
