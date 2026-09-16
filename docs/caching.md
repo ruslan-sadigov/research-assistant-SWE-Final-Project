@@ -1,9 +1,16 @@
 # Caching and persistence
 
-Component owner: Member 4. Code: `src/researcher/services/cache.py`,
-`src/researcher/storage/cache_store.py`. Satisfies `SourceCacheProtocol` and
-`CacheStoreProtocol` from `src/researcher/interfaces.py`, and uses the shared
-`CacheEntry` model from `src/researcher/models.py`.
+Component owner: Member 4 (Samur Eyyubov). Code:
+`src/researcher/services/cache.py`, `src/researcher/storage/cache_store.py`.
+Satisfies `SourceCacheProtocol` and `CacheStoreProtocol` from
+`src/researcher/interfaces.py`, and uses the shared `CacheEntry` model from
+`src/researcher/models.py`. The cache's place in the request flow is shown in
+[architecture](architecture.md); measured behaviour and the schema read back
+from a real database are in [cache verification](cache-verification.md).
+
+Measured with simulated providers over the five supplied questions and all
+three sources: **0/15 hits on the first run, 15/15 on the second, 15/30 (50%)
+combined**, with an answer synthesized on every run.
 
 ## What is cached
 
@@ -26,7 +33,7 @@ repeated question still produces a fresh answer from cached evidence.
 
 1. Unicode NFKC normalisation.
 2. Whitespace runs collapsed to single spaces; leading/trailing space removed.
-3. Trailing `?`, `!` and `.` stripped.
+3. Any trailing mix of `?`, `!`, `.` and whitespace stripped.
 4. `casefold()` -- a more aggressive lowercase that also handles non-English text.
 
 So `"What is Photosynthesis?"`, `"WHAT IS PHOTOSYNTHESIS"` and
@@ -35,7 +42,8 @@ punctuation is removed, so symbols that carry meaning inside a query survive:
 `"What is C++?"` becomes `"what is c++"`, not `"what is c"`.
 
 A question that normalises to nothing (`"???"`) raises `ValueError` rather than
-being stored under an empty key.
+being stored under an empty key. Normalisation is purely textual: `"What is
+photosynthesis in plants?"` is a different key from `"What is photosynthesis?"`.
 
 ## Expiry
 
@@ -54,6 +62,27 @@ empty source on every run.
 
 The clock is injectable (`clock=`), so tests move time forward instead of
 sleeping.
+
+Expired entries are not deleted. The next successful fetch of the same key
+replaces the row with fresh evidence and new timestamps.
+
+## Where the cache lives
+
+`researcher.cli.create_cache_store()` chooses the file:
+
+| Setting | SQLite file |
+|---|---|
+| `DATABASE_URL` blank (default) | `~/.cache/research-assistant/sources.sqlite3` |
+| `DATABASE_URL=sqlite:///.cache/sources.sqlite3` | Relative to the working directory |
+| `DATABASE_URL=sqlite:///C:/path/to/sources.sqlite3` | Windows absolute path |
+| `DATABASE_URL=sqlite:////path/to/sources.sqlite3` | Linux absolute path |
+| Docker runtime with `--env DATABASE_URL=` | `/home/appuser/.cache/research-assistant/sources.sqlite3`; mount a volume there to keep it |
+| `--no-cache` | None; see below |
+
+Missing parent directories are created and `~` is expanded. A value that is not
+`sqlite:///` followed by a file path (including `:memory:` or a path with `?`
+or `#`) stops the CLI with `Invalid cache configuration` and exit code 2,
+without printing the value. `.cache/` is already covered by `.gitignore`.
 
 ## Storage back ends
 
@@ -92,9 +121,20 @@ them. Version 0 databases are initialized (or adopted if their existing cache
 table matches); version 1 databases must already have the expected table.
 Table columns and primary-key structure are checked before use.
 
+The table has no index other than the automatic unique one for the primary
+key (`sqlite_autoindex_cache_entries_1`), which serves the only lookup the
+store runs. There are no foreign keys: a single table has nothing to
+reference. SQLite runs in its default rollback-journal mode, and no journal
+files remain after a write. Every column is derived data: a copy of what the
+external sources returned. Those sources stay authoritative, so deleting the
+file loses speed and API quota, not information. A sample payload and the
+schema as read from a real database are in
+[cache verification](cache-verification.md#sqlite-schema).
+
 A missing database file is an empty cache, not an error -- `sqlite3.connect`
 creates it lazily. A file that exists but is not a valid SQLite database, or a
 row whose `payload` no longer parses as a `CacheEntry`, raises `CacheStoreError`.
+Such a file is never overwritten.
 
 Database operations run in `asyncio.to_thread`. A `threading.Lock` inside the
 worker serializes initialization, reads, full write transactions, and closure
@@ -110,43 +150,59 @@ cannot reopen a closed store. A new store instance is needed to reopen it.
 
 ## Usage
 
+`run_ask()` builds the store and cache; `SourceOrchestrator` performs the
+read, fetch and write for each source inside that source's deadline. In
+outline:
+
 ```python
+from pathlib import Path
+
 from researcher.services.cache import SourceCache
 from researcher.storage.cache_store import InMemoryCacheStore, SqliteCacheStore
 
-# Ephemeral (tests, one-off runs)
-cache = SourceCache(InMemoryCacheStore(), ttl_seconds=settings.cache_ttl_seconds)
-
-# Persistent across runs
-store = SqliteCacheStore(".cache/sources.db")
+# Persistent across runs (the CLI's default location)
+store = SqliteCacheStore(Path.home() / ".cache" / "research-assistant" / "sources.sqlite3")
 cache = SourceCache(store, ttl_seconds=settings.cache_ttl_seconds)
+try:
+    cached = await cache.get_sources("wiki", question)
+    if cached is None:
+        sources = await ai_service.fetch_sources("wiki", question, client=client)
+        await cache.set_sources("wiki", question, sources)
+    else:
+        sources = cached
+finally:
+    await store.close()
 
-cached = await cache.get_sources("wiki", question)
-if cached is None:
-    sources = await ai_service.fetch_sources("wiki", question, client=client)
-    await cache.set_sources("wiki", question, sources)
-else:
-    sources = cached
-
-await store.close()
+# Ephemeral (tests, one-off experiments)
+cache = SourceCache(InMemoryCacheStore(), ttl_seconds=600)
 ```
 
-`--no-cache` is handled above this layer: the orchestrator skips both the read
-and the write rather than asking the cache to disable itself.
+### `--no-cache`
+
+`--no-cache` is handled above this layer. The CLI builds an
+`InMemoryCacheStore` instead of opening SQLite, and the orchestrator skips both
+the read and the write rather than asking the cache to disable itself. The run
+therefore makes no cache lookups, fetches every selected source, and leaves an
+existing SQLite file byte-for-byte unchanged. arXiv request pacing still
+applies.
 
 ## Failure behaviour
 
 Storage problems raise `CacheStoreError`, deliberately distinct from "nothing
 cached". The orchestrator converts it into a warning and keeps fetching, so a
-broken cache costs speed rather than the run.
+broken cache costs speed rather than the run. With an unreadable file, every
+source reports a failed read and a failed write; the answer is still produced,
+with one warning line per source, until the file is removed.
 
 ## Invalidation
 
-Entries expire by TTL only; there is no eviction command. If the provider or
-the per-source result limit changes, cached entries no longer describe what the
-application would fetch today -- delete the cache database, or point
-`SqliteCacheStore` at a different path. `PRAGMA user_version` and the composite
-key give a natural place to add per-setting namespacing later.
+Entries expire by TTL only; there is no eviction command. The key contains
+only the source and the normalised question, not `WEB_SEARCH_PROVIDER`,
+`MAX_SOURCES_PER_QUERY` or the provider's own behaviour. After changing those,
+cached entries no longer describe what the application would fetch today --
+delete the cache database, or set `DATABASE_URL` to a different file.
+`PRAGMA user_version` and the composite key give a natural place to add
+per-setting namespacing later.
 
 Choose a cache path outside version control; `.cache/` is already covered by
 `.gitignore`.
@@ -166,6 +222,18 @@ and initialization, subsequent reads/writes/closure, rollback after a deferred
 constraint fails at commit, unsupported schema versions, initialization
 cleanup, and filesystem errors. Test-created connections are explicitly closed.
 
+- `tests/test_cache_store_contract.py` pins the documented schema, index,
+  foreign keys and JSON payload, and covers a table removed while the store is
+  open, a failing connection close, and a non-database file that must be left
+  untouched.
+- `tests/test_cache_integration.py` runs the real `Researcher`,
+  `SourceOrchestrator`, `SourceCache` and SQLite store with a simulated AI
+  service: cold and warm hits, reformatted and different questions, expiry
+  followed by in-place replacement, empty and failed results, a corrupt cache
+  file through `run_ask()`, and `--no-cache` leaving the database unchanged.
+- `tests/test_cache_verification.py` runs `tests/cache_verification.py`, the
+  script behind the measured hit rate.
+
 ## Known limitations
 
 - The worker lock serializes access within one store instance. SQLite's file
@@ -177,3 +245,10 @@ cleanup, and filesystem errors. Test-created connections are explicitly closed.
 - One TTL for all three sources, although arXiv results age far more slowly
   than web search results. Per-source TTLs are the obvious refinement.
 - No size bound or eviction policy; the database grows until deleted.
+- An empty result is kept for the full TTL. Live full-sentence questions found
+  no Wikipedia matches, so repeating one reports Wikipedia as empty from the
+  cache for 24 hours. A shorter TTL for empty entries would be a refinement.
+- A corrupt cache file is not repaired or replaced automatically.
+
+These points are discussed with evidence in
+[cache verification](cache-verification.md#findings-for-team-discussion).
