@@ -24,17 +24,74 @@ st.set_page_config(page_title="Research Assistant", page_icon="🔮", layout="ce
 
 st.markdown(
     """
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
     <style>
+    :root {
+        --accent: #aa3bff;
+        --accent-2: #22d3ee;
+        --accent-soft: rgba(170, 59, 255, 0.12);
+    }
     .stApp {
         background: radial-gradient(ellipse 1200px 800px at 50% -10%,
             #2c1f52 0%, #140f2c 45%, #08060f 100%);
     }
+    .stApp, .stApp p, .stApp li, .stApp label, .stMarkdown {
+        font-family: "Source Sans 3", system-ui, sans-serif;
+    }
+    .stApp h1, .stApp h2, .stApp h3 {
+        font-family: "Fraunces", Georgia, serif;
+    }
     h1 {
-        background: linear-gradient(135deg, #aa3bff, #22d3ee);
+        background: linear-gradient(135deg, var(--accent), var(--accent-2));
         -webkit-background-clip: text;
         background-clip: text;
         color: transparent;
         letter-spacing: -0.5px;
+        margin-bottom: 2px !important;
+    }
+    .tagline {
+        color: rgba(234, 230, 242, 0.65);
+        font-size: 15px;
+        margin: -6px 0 28px;
+    }
+    .eyebrow {
+        display: inline-block;
+        font-family: "JetBrains Mono", ui-monospace, monospace;
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--accent-2);
+        background: var(--accent-soft);
+        padding: 4px 10px;
+        border-radius: 999px;
+        margin-bottom: 12px;
+    }
+    [data-testid="stForm"] {
+        border-radius: 18px;
+        border-color: rgba(170, 59, 255, 0.25);
+        position: relative;
+        overflow: hidden;
+    }
+    [data-testid="stForm"]::before {
+        content: "";
+        position: absolute;
+        top: 0; left: 0; right: 0;
+        height: 3px;
+        background: linear-gradient(90deg, var(--accent), var(--accent-2), var(--accent));
+    }
+    .cite-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, var(--accent), var(--accent-2));
+        color: white;
+        font-size: 12px;
+        font-weight: 700;
+        font-family: "JetBrains Mono", monospace;
     }
     [data-testid="stSidebar"] {
         border-right: 1px solid rgba(170, 59, 255, 0.2);
@@ -135,24 +192,28 @@ with st.sidebar:
                 delete_history_item(item["id"])
                 st.rerun()
 
+st.markdown('<span class="eyebrow">Wikipedia · arXiv · Web</span>', unsafe_allow_html=True)
 st.title("Research Assistant")
+st.markdown(
+    '<p class="tagline">Ask anything — evidence gets fetched from all three, then synthesized into one cited answer.</p>',
+    unsafe_allow_html=True,
+)
 
-with st.container(border=True):
-    with st.form("ask-form"):
-        question = st.text_input(
-            "Question",
-            key="question_input",
-            placeholder="Ask a research question...",
-            label_visibility="collapsed",
-        )
-        sources = st.pills(
-            "Sources",
-            ALL_SOURCES,
-            selection_mode="multi",
-            key="sources_input",
-            label_visibility="collapsed",
-        )
-        submitted = st.form_submit_button("Ask", type="primary")
+with st.form("ask-form"):
+    question = st.text_input(
+        "Question",
+        key="question_input",
+        placeholder="Ask a research question...",
+        label_visibility="collapsed",
+    )
+    sources = st.pills(
+        "Sources",
+        ALL_SOURCES,
+        selection_mode="multi",
+        key="sources_input",
+        label_visibility="collapsed",
+    )
+    submitted = st.form_submit_button("Ask", type="primary")
 
 if submitted:
     st.session_state.result = None
@@ -215,13 +276,21 @@ if st.session_state.result:
         if result["citations"]:
             st.markdown("**References**")
             for citation in result["citations"]:
-                # Plain st.markdown (unsafe_allow_html left False) escapes any HTML
-                # in title/origin, since both come from external, untrusted sources.
                 with st.container(border=True):
-                    st.markdown(f"**[{citation['index']}]** ({citation['origin']}) {citation['title']}")
-                    st.markdown(safe_link_markdown(citation["url"], citation["url"]))
+                    badge_col, text_col = st.columns([1, 14], gap="small", vertical_alignment="top")
+                    # citation["index"] is a server-generated int, safe to inline as HTML;
+                    # title/origin are plain st.markdown (unsafe_allow_html left False),
+                    # which escapes any HTML in them since both are external, untrusted text.
+                    badge_col.markdown(
+                        f'<div class="cite-badge">{citation["index"]}</div>',
+                        unsafe_allow_html=True,
+                    )
+                    text_col.markdown(f"**({citation['origin']})** {citation['title']}")
+                    text_col.markdown(safe_link_markdown(citation["url"], citation["url"]))
 
         if result["warnings"]:
             st.markdown("**Warnings**")
             for warning in result["warnings"]:
                 st.warning(warning)
+elif not st.session_state.error:
+    st.caption("Your answer, with numbered citations, will appear here.")
