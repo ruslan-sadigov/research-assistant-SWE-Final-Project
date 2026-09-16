@@ -107,6 +107,62 @@ with offline provider responses, run the sample-question integration tests:
 uv run python -m pytest tests/test_sample_questions.py -v
 ```
 
+## Web app
+
+A Streamlit UI (`streamlit_app/`) is a thin client over a FastAPI HTTP API
+(`src/webapi/api.py`), which in turn shares all research logic with the CLI
+through `Researcher`/`AIService`/`SourceOrchestrator` — the web app adds no
+new business logic of its own. Two things must be running at once, in two
+separate terminals. Complete [Setup](#setup) first (`uv sync --locked` and a
+filled-in `.env`); without real API keys, requests will reach the server but
+research itself will fail.
+
+### 1. Start the API
+
+In its own terminal, from the project root:
+
+```powershell
+uv run uvicorn webapi.api:app --app-dir src --reload
+```
+
+Leave this running. Confirm it started with no errors — you should see
+`Uvicorn running on http://127.0.0.1:8000` and `Application startup complete`.
+You can sanity-check it independently of the UI by opening
+`http://127.0.0.1:8000/docs` (FastAPI's interactive docs) in a browser.
+
+### 2. Start the Streamlit UI, in a second terminal
+
+```powershell
+uv pip install -r streamlit_app/requirements.txt
+uv run streamlit run streamlit_app/app.py
+```
+
+Opens at `http://localhost:8501`. Set the `RESEARCH_API_URL` environment
+variable first if the API isn't at the default `http://127.0.0.1:8000/ask`.
+History is stored locally at `~/.cache/research-assistant/streamlit_history.json`.
+
+### Troubleshooting
+
+**The page hangs on "Researching..." / loading forever, with no error.**
+This means the UI can reach *something* on port 8000, but it isn't
+responding — usually a previous API process left running in a bad state
+(e.g. a terminal that was closed without stopping it). Check what's on the
+port and stop it, then restart the API from step 1:
+
+```powershell
+Get-NetTCPConnection -LocalPort 8000 | Select-Object OwningProcess
+Stop-Process -Id <OwningProcess value from above> -Force
+```
+
+**"Could not reach the research API."**
+The API isn't running, or it's on a different port than the UI expects.
+Confirm step 1 is still running in its terminal and re-check `RESEARCH_API_URL`.
+
+**A request completes but returns no answer, only warnings.**
+Not a bug — it means every source failed or timed out, or synthesis failed.
+Check the API terminal's log output for the actual cause (e.g. an invalid or
+quota-exhausted `GOOGLE_API_KEY`/`TAVILY_API_KEY` in `.env`).
+
 ## Tests and code quality
 
 Tests use simulated providers or mock HTTP and require no API credentials.
