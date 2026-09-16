@@ -49,3 +49,24 @@ USER appuser
 
 ENTRYPOINT ["python", "-m", "researcher"]
 CMD ["--help"]
+
+
+# HTTP API runtime, sharing the same installed package as the CLI.
+FROM python:3.12-slim AS api
+
+ENV PATH="/app/.venv/bin:$PATH" \
+    HOME="/home/appuser" \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+RUN useradd --create-home appuser \
+    && install -d -o appuser -g appuser /home/appuser/.cache/research-assistant
+
+COPY --from=builder /app/.venv /app/.venv
+
+USER appuser
+
+EXPOSE 8000
+ENTRYPOINT ["uvicorn", "webapi.api:app", "--host", "0.0.0.0", "--port", "8000"]

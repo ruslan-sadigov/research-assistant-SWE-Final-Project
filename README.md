@@ -240,6 +240,30 @@ docker image inspect research-assistant:runtime --format '{{.Size}}'
 
 See [Docker verification](docs/docker.md) for the recorded build and live results.
 
+### Web app (Docker Compose)
+
+The API and the Streamlit UI each have their own image, joined by a Docker
+Compose network so they can reach each other by service name instead of
+`localhost`. Requires a filled-in `.env` (see [Setup](#setup)).
+
+```powershell
+docker compose up --build
+```
+
+This builds `api` (the `api` target in the root `Dockerfile`, reusing the
+same installed package as the CLI's `runtime` image) and `frontend` (a
+separate, standalone image built from `streamlit_app/Dockerfile`, which
+needs nothing from the rest of the project — only `streamlit` and
+`requests`). The frontend's `RESEARCH_API_URL` is set to `http://api:8000/ask`,
+using the `api` service's Compose-internal hostname; on the host, reach them
+at `http://localhost:8000/docs` and `http://localhost:8501`. The API's SQLite
+cache persists in a named volume (`research-cache`) across `docker compose
+restart`, but is removed by `docker compose down --volumes`.
+
+```powershell
+docker compose down
+```
+
 ## Sequential versus parallel collection
 
 Run the repeatable offline benchmark over all five supplied questions:

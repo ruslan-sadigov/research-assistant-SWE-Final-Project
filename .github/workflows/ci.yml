@@ -121,3 +121,48 @@ jobs:
               --mount "type=bind,source=$PWD/tests/docker_smoke.py,target=/tmp/docker_smoke.py,readonly" \
               research-assistant:runtime /tmp/docker_smoke.py "$mode"
           done
+
+  compose:
+    name: compose
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4.2.2
+
+      # No real API keys are available in CI; placeholder values from
+      # .env.example are enough to boot both containers. This job only
+      # checks that the stack starts and the two services can reach each
+      # other, not that a real research question succeeds end to end.
+      - name: Prepare placeholder .env
+        run: cp .env.example .env
+
+      - name: Build and start the compose stack
+        run: docker compose up --build -d
+
+      - name: Wait for the API to become reachable
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8000/docs > /dev/null; then exit 0; fi
+            sleep 2
+          done
+          echo "API never became reachable" >&2
+          exit 1
+
+      - name: Wait for the Streamlit frontend to become reachable
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8501 > /dev/null; then exit 0; fi
+            sleep 2
+          done
+          echo "Frontend never became reachable" >&2
+          exit 1
+
+      - name: Show container logs on failure
+        if: failure()
+        run: docker compose logs
+
+      - name: Tear down
+        if: always()
+        run: docker compose down --volumes
