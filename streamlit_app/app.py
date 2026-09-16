@@ -236,7 +236,9 @@ if submitted:
                         detail = response.json().get("detail")
                     except ValueError:
                         detail = None
-                    st.session_state.error = detail or f"Request failed with status {response.status_code}"
+                    st.session_state.error = (
+                        detail or f"Request failed with status {response.status_code}"
+                    )
                 else:
                     data = response.json()
                     st.session_state.result = data
