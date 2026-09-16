@@ -53,10 +53,8 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background:
-    radial-gradient(700px circle at 12% -5%, var(--accent-bg), transparent 60%),
-    radial-gradient(700px circle at 88% 105%, rgba(34, 211, 238, 0.12), transparent 60%),
-    var(--bg);
+  overflow-x: hidden;
+  background: radial-gradient(ellipse 1400px 900px at 50% -10%, #2c1f52 0%, #140f2c 45%, #08060f 100%);
 }
 
 #root {

@@ -1,26 +1,243 @@
-.app {
-  width: 100%;
-  box-sizing: border-box;
-  max-width: 640px;
-  margin: 80px auto;
-  padding: 40px 36px;
-  border-radius: 20px;
-  text-align: left;
-  position: relative;
-  overflow: hidden;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  box-shadow:
-    0 24px 48px -24px rgba(0, 0, 0, 0.35),
-    0 1px 0 rgba(255, 255, 255, 0.04) inset;
-  animation: app-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-  transition: box-shadow 0.3s ease;
+@media (max-width: 760px) {
+  .layout {
+    flex-direction: column;
+    align-items: stretch;
+    margin: 40px auto;
+  }
+
+  .history-panel {
+    max-width: none;
+    max-height: 200px;
+  }
 }
 
-.app:hover {
+.grid-floor {
+  position: fixed;
+  left: -25%;
+  right: -25%;
+  bottom: 0;
+  height: 60vh;
+  background-image: linear-gradient(rgba(170, 59, 255, 0.4) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(170, 59, 255, 0.4) 1px, transparent 1px);
+  background-size: 56px 56px;
+  transform: perspective(400px) rotateX(78deg);
+  transform-origin: bottom;
+  mask-image: linear-gradient(to top, rgba(0, 0, 0, 0.9), transparent 75%);
+  -webkit-mask-image: linear-gradient(to top, rgba(0, 0, 0, 0.9), transparent 75%);
+  opacity: 0.55;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.bg-orb {
+  position: fixed;
+  border-radius: 50%;
+  filter: blur(70px);
+  opacity: 0.5;
+  pointer-events: none;
+  z-index: 0;
+  animation: float ease-in-out infinite;
+}
+
+.bg-orb-1 {
+  width: 420px;
+  height: 420px;
+  top: -140px;
+  left: -120px;
+  background: radial-gradient(circle, var(--accent), transparent 70%);
+  animation-duration: 18s;
+}
+
+.bg-orb-2 {
+  width: 380px;
+  height: 380px;
+  bottom: -120px;
+  right: -100px;
+  background: radial-gradient(circle, #22d3ee, transparent 70%);
+  animation-duration: 22s;
+  animation-delay: -6s;
+}
+
+.bg-orb-3 {
+  width: 300px;
+  height: 300px;
+  top: 45%;
+  right: 10%;
+  background: radial-gradient(circle, #f472b6, transparent 70%);
+  animation-duration: 20s;
+  animation-delay: -11s;
+}
+
+.layout {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 20px;
+  max-width: 920px;
+  margin: 80px auto;
+  padding: 0 16px;
+  box-sizing: border-box;
+}
+
+.history-panel {
+  flex: 0 0 240px;
+  max-width: 240px;
+  box-sizing: border-box;
+  padding: 20px 16px;
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--bg) 62%, transparent);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  border: 1px solid var(--border);
+  box-shadow: 0 24px 48px -28px rgba(0, 0, 0, 0.5);
+  max-height: 600px;
+  overflow-y: auto;
+  animation: app-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.history-panel h2 {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  margin: 0 0 14px;
+}
+
+.new-chat {
+  width: 100%;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  border: 1.5px dashed var(--accent-border);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.new-chat:hover {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+}
+
+.history-empty {
+  font-size: 12.5px;
+  color: var(--text);
+  opacity: 0.65;
+  text-align: center;
+  padding: 12px 4px;
+}
+
+.history-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text);
+  transition: background 0.15s ease;
+}
+
+.history-item:hover {
+  background: var(--accent-bg);
+}
+
+.history-item.active {
+  background: var(--accent-bg);
+  color: var(--text-h);
+  font-weight: 600;
+}
+
+.history-question {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-delete {
+  opacity: 0;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 6px;
+  transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.history-item:hover .history-delete {
+  opacity: 1;
+}
+
+.history-delete:hover {
+  background: rgba(229, 72, 77, 0.15);
+  color: #e5484d;
+}
+
+.app-shell {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 640px;
+  max-width: 640px;
+  margin: 0;
+  border-radius: 24px;
+  padding: 2px;
+  overflow: hidden;
+  isolation: isolate;
   box-shadow:
-    0 32px 64px -24px rgba(0, 0, 0, 0.4),
-    0 1px 0 rgba(255, 255, 255, 0.04) inset;
+    0 30px 60px -28px rgba(0, 0, 0, 0.5),
+    0 12px 24px -14px rgba(170, 59, 255, 0.4);
+  animation: app-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  transform: perspective(900px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg));
+  transition: transform 0.2s ease-out, box-shadow 0.3s ease;
+  will-change: transform;
+}
+
+.app-shell:hover {
+  box-shadow:
+    0 44px 84px -32px rgba(0, 0, 0, 0.6),
+    0 16px 32px -14px rgba(170, 59, 255, 0.5);
+}
+
+.app-shell::before {
+  content: '';
+  position: absolute;
+  inset: -60%;
+  background: conic-gradient(from 0deg, var(--accent), #22d3ee, #f472b6, var(--accent));
+  animation: spin 7s linear infinite;
+  z-index: 0;
+}
+
+.app {
+  position: relative;
+  z-index: 1;
+  box-sizing: border-box;
+  padding: 40px 36px;
+  border-radius: 22px;
+  text-align: left;
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  transition: background 0.3s ease;
 }
 
 .app::before {
@@ -28,9 +245,26 @@
   position: absolute;
   inset: 0 0 auto 0;
   height: 4px;
+  border-radius: 22px 22px 0 0;
   background: linear-gradient(90deg, var(--accent), #22d3ee, var(--accent));
   background-size: 200% 100%;
   animation: gradient-slide 6s linear infinite;
+  z-index: 2;
+}
+
+.app::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 22px;
+  background: radial-gradient(
+    circle at var(--mx, 50%) var(--my, 15%),
+    rgba(255, 255, 255, 0.35),
+    transparent 55%
+  );
+  mix-blend-mode: overlay;
+  pointer-events: none;
+  transition: background 0.15s ease-out;
 }
 
 .app h1 {
@@ -98,6 +332,8 @@ input[type='text']:focus {
 
 button[type='submit'] {
   align-self: flex-start;
+  position: relative;
+  overflow: hidden;
   display: inline-flex;
   align-items: center;
   gap: 10px;
@@ -111,6 +347,27 @@ button[type='submit'] {
   cursor: pointer;
   box-shadow: 0 10px 24px -10px var(--accent-border);
   transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.2s ease;
+}
+
+button[type='submit']::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -60%;
+  width: 40%;
+  background: linear-gradient(
+    115deg,
+    transparent,
+    rgba(255, 255, 255, 0.35),
+    transparent
+  );
+  transform: skewX(-20deg);
+  transition: left 0.5s ease;
+}
+
+button[type='submit']:hover:not(:disabled)::after {
+  left: 120%;
 }
 
 button[type='submit']:hover:not(:disabled) {
@@ -292,5 +549,18 @@ button[type='submit']:disabled {
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(30px, -40px) scale(1.08);
+  }
+  66% {
+    transform: translate(-20px, 30px) scale(0.95);
   }
 }
