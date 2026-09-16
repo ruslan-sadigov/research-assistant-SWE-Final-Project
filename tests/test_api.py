@@ -12,8 +12,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from ai.schemas import AnswerWithCitations, Source
-from researcher import api
 from researcher.config import Settings
+from webapi import api
 
 
 class OfflineAIService:
