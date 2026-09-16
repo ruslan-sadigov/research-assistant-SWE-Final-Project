@@ -1,3 +1,4 @@
+
 # Local Python environments
 .venv/
 venv/
@@ -39,4 +40,7 @@ dist/
 Thumbs.db
 Desktop.ini
 
+# claude tooling configuration
+.claude/
 # Keep uv.lock and .python-version tracked for reproducible setup.
+
