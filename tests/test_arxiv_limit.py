@@ -87,12 +87,25 @@ async def test_deadline_cancels_spacing_wait_before_request(tmp_path):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("value", ["invalid", "nan", "inf"])
-async def test_corrupt_timestamp_fails_closed(tmp_path, value):
-    (tmp_path / "last-request").write_text(value)
-    with pytest.raises(ValueError):
-        async with ArxivLimiter(tmp_path).request_slot():
-            pytest.fail("request started with invalid limiter state")
+@pytest.mark.parametrize("value", ["", "invalid", "nan", "inf", "1e999", "\u00e9"])
+async def test_unreadable_timestamp_waits_full_interval_and_is_repaired(tmp_path, value):
+    # A crash between truncating and rewriting the file leaves it empty.
+    (tmp_path / "last-request").write_text(value, encoding="utf-8")
+    sleep = AsyncMock()
+    async with ArxivLimiter(tmp_path, clock=lambda: 100.0, sleep=sleep).request_slot():
+        pass
+    sleep.assert_awaited_once_with(3.0)
+    assert float((tmp_path / "last-request").read_text()) == 100.0
+
+
+@pytest.mark.asyncio
+async def test_timestamp_after_clock_moved_back_waits_only_one_interval(tmp_path):
+    (tmp_path / "last-request").write_text("100000")
+    sleep = AsyncMock()
+    async with ArxivLimiter(tmp_path, clock=lambda: 100.0, sleep=sleep).request_slot():
+        pass
+    sleep.assert_awaited_once_with(3.0)
+    assert float((tmp_path / "last-request").read_text()) == 100.0
 
 
 def test_lock_shared_between_processes(tmp_path):
@@ -198,8 +211,11 @@ async def test_cooldown_deadline_does_not_erase_shared_state(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_invalid_cooldown_fails_closed(tmp_path):
-    (tmp_path / "retry-after-until").write_text("nan")
-    with pytest.raises(ValueError):
-        async with ArxivLimiter(tmp_path).request_slot():
-            pytest.fail("sent with invalid cooldown")
+@pytest.mark.parametrize("value", ["", "nan"])
+async def test_unreadable_cooldown_waits_full_interval_and_is_repaired(tmp_path, value):
+    (tmp_path / "retry-after-until").write_text(value)
+    sleep = AsyncMock()
+    async with ArxivLimiter(tmp_path, clock=lambda: 100.0, sleep=sleep).request_slot():
+        pass
+    sleep.assert_awaited_once_with(3.0)
+    assert not (tmp_path / "retry-after-until").exists()

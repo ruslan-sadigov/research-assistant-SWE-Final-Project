@@ -139,8 +139,12 @@ Keep the directory on local disk and do not delete its lock file while running.
 
 Waiting yields to the event loop and remains inside the existing per-source
 deadline. Cancellation releases the lock; a cancelled in-flight request still
-records its completion time. An inaccessible or invalid limiter state fails the
-source instead of sending an unpaced request. A process killed abruptly releases
+records its completion time. An inaccessible limiter directory fails the source
+instead of sending an unpaced request. An unreadable or non-finite persisted
+time (for example, a file left empty by a process killed mid-write), or a
+last-request time in the future after the clock moved back, is treated as a
+request that just finished: the next request waits one full interval, logs a
+warning, and rewrites the state. A process killed abruptly releases
 its OS lock; the persisted start timestamp provides spacing for its successor,
 but cannot establish when a remote server stopped processing the killed request.
 
@@ -175,8 +179,10 @@ timeout without another request. For arXiv, the active request slot additionally
 persists a `retry-after-until` timestamp before releasing its OS lock, including
 on the last failed attempt. New service instances or CLI processes sharing the
 limiter directory must respect both that timestamp and the usual three-second
-spacing. Cancelling a waiter does not erase the cooldown. Invalid persisted
-cooldown state fails the source rather than bypassing the limiter.
+spacing. Cancelling a waiter does not erase the cooldown. An unreadable
+persisted cooldown cannot be recovered, so it is removed and the next request
+waits one full three-second interval instead; a server that still wants a
+longer pause answers with a new Retry-After, which is persisted again.
 
 This header handling covers HTTPX responses used by the source fetchers; it does
 not claim to interpret every provider SDK's rate-limit metadata. Our previous

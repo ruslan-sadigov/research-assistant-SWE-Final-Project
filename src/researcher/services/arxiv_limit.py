@@ -2,6 +2,7 @@
 
 import asyncio
 import errno
+import logging
 import math
 import os
 import sys
@@ -11,6 +12,8 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
+
+logger = logging.getLogger(__name__)
 
 
 def _try_lock(file: BinaryIO) -> bool:
@@ -29,6 +32,20 @@ def _try_lock(file: BinaryIO) -> bool:
             return False
         raise
     return True
+
+
+def _read_time(path: Path) -> float | None:
+    """Return a persisted time, None when absent, or NaN when unreadable.
+
+    A process killed between truncating and rewriting a file leaves it empty.
+    """
+    try:
+        value = float(path.read_text(encoding="ascii"))
+    except FileNotFoundError:
+        return None
+    except (ValueError, UnicodeDecodeError):
+        return math.nan
+    return value if math.isfinite(value) else math.nan
 
 
 @dataclass
@@ -69,22 +86,23 @@ class ArxivLimiter:
                 lock.flush()
             while not _try_lock(lock):
                 await self._sleep(0.05)
+            now = self._clock()
             timestamp = directory / "last-request"
-            try:
-                previous = float(timestamp.read_text(encoding="ascii"))
-            except FileNotFoundError:
-                previous = None
+            previous = _read_time(timestamp)
             cooldown = directory / "retry-after-until"
-            try:
-                retry_at = float(cooldown.read_text(encoding="ascii"))
-            except FileNotFoundError:
-                retry_at = 0.0
-            if not math.isfinite(retry_at) or (
-                previous is not None and not math.isfinite(previous)
-            ):
-                raise ValueError("Invalid arXiv limiter timestamp")
-            allowed_at = max(retry_at, previous + 3.0 if previous is not None else 0.0)
-            remaining = allowed_at - self._clock()
+            retry_at = _read_time(cooldown)
+            if retry_at is not None and math.isnan(retry_at):
+                # The lost cooldown cannot be recovered; pace conservatively instead.
+                logger.warning("arXiv limiter cooldown unreadable; waiting a full interval")
+                cooldown.unlink(missing_ok=True)
+                retry_at = None
+                previous = now
+            if previous is not None and (math.isnan(previous) or previous > now):
+                # Unreadable state or a clock moved back: assume a request just finished.
+                logger.warning("arXiv limiter timestamp unusable; waiting a full interval")
+                previous = now
+            allowed_at = max(retry_at or 0.0, previous + 3.0 if previous is not None else 0.0)
+            remaining = allowed_at - now
             if remaining > 0:
                 await self._sleep(remaining)
             started = self._clock()
