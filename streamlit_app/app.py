@@ -138,6 +138,8 @@ if "question_input" not in st.session_state:
     st.session_state.question_input = ""
 if "sources_input" not in st.session_state:
     st.session_state.sources_input = list(ALL_SOURCES)
+if "no_cache_input" not in st.session_state:
+    st.session_state.no_cache_input = False
 if "result" not in st.session_state:
     st.session_state.result = None
 if "error" not in st.session_state:
@@ -147,6 +149,7 @@ if "error" not in st.session_state:
 def start_new_chat() -> None:
     st.session_state.question_input = ""
     st.session_state.sources_input = list(ALL_SOURCES)
+    st.session_state.no_cache_input = False
     st.session_state.result = None
     st.session_state.error = None
     st.session_state.active_id = None
@@ -156,6 +159,8 @@ def load_history_item(item: dict) -> None:
     st.session_state.active_id = item["id"]
     st.session_state.question_input = item["question"]
     st.session_state.sources_input = item["sources"]
+    # Older history entries were saved before this field existed.
+    st.session_state.no_cache_input = not item.get("use_cache", True)
     st.session_state.result = item["result"]
     st.session_state.error = None
 
@@ -213,6 +218,10 @@ with st.form("ask-form"):
         key="sources_input",
         label_visibility="collapsed",
     )
+    no_cache = st.checkbox(
+        "Skip cache — always fetch fresh evidence",
+        key="no_cache_input",
+    )
     submitted = st.form_submit_button("Ask", type="primary")
 
 if submitted:
@@ -224,11 +233,12 @@ if submitted:
     elif not sources:
         st.session_state.error = "Select at least one source."
     else:
+        use_cache = not no_cache
         with st.spinner("Researching..."):
             try:
                 response = requests.post(
                     API_URL,
-                    json={"question": question, "sources": sources},
+                    json={"question": question, "sources": sources, "use_cache": use_cache},
                     timeout=REQUEST_TIMEOUT_SECONDS,
                 )
                 if response.status_code >= 400:
@@ -246,6 +256,7 @@ if submitted:
                         "id": str(uuid.uuid4()),
                         "question": data["question"],
                         "sources": sources,
+                        "use_cache": use_cache,
                         "result": data,
                     }
                     st.session_state.history = [entry, *st.session_state.history][:HISTORY_LIMIT]
