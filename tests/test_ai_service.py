@@ -751,8 +751,10 @@ async def test_fetch_sources_max_retries_exceeded():
 
     service = AIService(settings)
 
-    with patch("ai.fetch_wikipedia", new_callable=AsyncMock) as mock_wiki, \
-         patch("asyncio.sleep", new_callable=AsyncMock):
+    with (
+        patch("ai.fetch_wikipedia", new_callable=AsyncMock) as mock_wiki,
+        patch("asyncio.sleep", new_callable=AsyncMock),
+    ):
         mock_wiki.side_effect = Exception("Persistent connection error")
 
         async with service.open_source_client() as client:
@@ -760,5 +762,3 @@ async def test_fetch_sources_max_retries_exceeded():
                 await service.fetch_sources("wiki", "query", client=client)
 
         assert mock_wiki.call_count == 1
-
-
