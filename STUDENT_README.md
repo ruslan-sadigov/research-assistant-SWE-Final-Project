@@ -54,16 +54,47 @@ The full list is in `.env.example`.
 
 ```bash
 # CLI
-python -m researcher fetch --provider arxiv --query "quantum computing"
+python -m researcher fetch --provider arxiv --query "What is photosynthesis and what are its main stages?"
 
 ```
 
-_[{
-  "provider": "arxiv",
-  "query": "quantum computing",
-  "status": "success",
-  "results_count": 5
-}]_
+{
+  "started_utc": "2026-09-15T20:42:47.142539+00:00",
+  "per_source_timeout_seconds": 10.0,
+  "retry_max_attempts": 3,
+  "runs": [
+    {
+      "question": "What is photosynthesis and what are its main stages?",
+      "mode": "parallel",
+      "elapsed_seconds": 3.6159,
+      "unique_results": 6,
+      "outcomes": [
+        {
+          "source": "arxiv",
+          "status": "ok",
+          "results": 3,
+          "elapsed_seconds": 3.4212,
+          "urls": [
+            "[http://arxiv.org/abs/1805.06617v1](http://arxiv.org/abs/1805.06617v1)",
+            "[http://arxiv.org/abs/2504.17803v1](http://arxiv.org/abs/2504.17803v1)",
+            "[http://arxiv.org/abs/2510.09791v3](http://arxiv.org/abs/2510.09791v3)"
+          ]
+        },
+        {
+          "source": "web",
+          "status": "ok",
+          "results": 3,
+          "elapsed_seconds": 0.4828,
+          "urls": [
+            "[https://www.khanacademy.org/science/ap-biology/cellular-energetics/photosynthesis/v/breaking-down-photosynthesis-stages](https://www.khanacademy.org/science/ap-biology/cellular-energetics/photosynthesis/v/breaking-down-photosynthesis-stages)",
+            "[https://en.wikipedia.org/wiki/Photosynthesis](https://en.wikipedia.org/wiki/Photosynthesis)",
+            "[https://education.nationalgeographic.org/resource/photosynthesis](https://education.nationalgeographic.org/resource/photosynthesis)"
+          ]
+        }
+      ]
+    }
+  ]
+}
 
 ## Sequential vs concurrent benchmark
 
@@ -119,7 +150,7 @@ pytest --cov=src --cov-report=term-missing
 
 ## Architecture in one diagram
 
-![alt text](image.png)
+![alt text](architecture.png)
 
 
 ## Limitations
