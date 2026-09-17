@@ -11,21 +11,16 @@ Due: September 19, 2026 at 23:59 (UTC+4)
 ## Quick start
 
 ```bash
-# 1. Clone & install
 git clone https://github.com/ruslan-sadigov/research-assistant-SWE-Final-Project/tree/main/.github
 cd research-assistant-SWE-Final-Project
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-# 2. Configure
 cp .env.example .env       
-# (DO NOT commit .env — it is in .gitignore)
 
-# 3. Run the smoke tests
-pytest tests/test_ai_smoke.py -v   # provided smoke tests
-pytest $env:PYTHONPATH="src;." ; python -m pytest tests/test_ai_service.py -v    # your full suite
+pytest tests/test_ai_smoke.py -v   
+pytest $env:PYTHONPATH="src;." ; python -m pytest tests/test_ai_service.py -v   
 
-# 4. Run the demo
 python -m researcher demo
 ```
 
@@ -46,7 +41,6 @@ docker run --env-file .env -p 8000:8000 research-assistant
 | `LOG_LEVEL` | no | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR` |
 | `DATABASE_URL` | no | `sqlite:///./app.db` | SQLite path |
 | `MAX_PARALLEL` | no | `10` | semaphore bound for concurrent calls |
-| _[...]_ | _[...]_ | _[...]_ | _[...]_ |
 
 The full list is in `.env.example`. 
 
@@ -104,7 +98,7 @@ python -m researcher fetch --provider arxiv --query "What is photosynthesis and 
 
 **Reproduce:**
 ```bash
-python scripts/bench.py --N 20
+python scripts/bench.py --N 3
 ```
 
 Bottleneck after the parallelization is provider network latency and external rate limits. See `report/report.pdf` §[3.2] for details.
@@ -150,7 +144,7 @@ pytest --cov=src --cov-report=term-missing
 
 ## Architecture in one diagram
 
-![alt text](architecture.png)
+![Architecture](architecture.png)
 
 
 ## Limitations
