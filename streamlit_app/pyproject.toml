@@ -1,0 +1,9 @@
+[project]
+name = "streamlit-frontend"
+version = "0.1.0"
+description = "Streamlit UI for the research assistant; calls the FastAPI /ask endpoint over HTTP."
+requires-python = ">=3.12"
+dependencies = [
+    "streamlit>=1.38,<2",
+    "requests>=2.31,<3",
+]

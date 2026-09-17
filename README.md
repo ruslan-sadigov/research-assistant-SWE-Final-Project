@@ -132,9 +132,15 @@ You can sanity-check it independently of the UI by opening
 
 ### 2. Start the Streamlit UI, in a second terminal
 
+`streamlit_app/` is its own isolated `uv` project (own `pyproject.toml` and
+`uv.lock`), kept separate from the root project's environment so the UI's
+dependencies (`streamlit`, `requests`) never mix into the graded package's
+`.venv`.
+
 ```powershell
-uv pip install -r streamlit_app/requirements.txt
-uv run streamlit run streamlit_app/app.py
+cd streamlit_app
+uv sync
+uv run streamlit run app.py
 ```
 
 Opens at `http://localhost:8501`. Set the `RESEARCH_API_URL` environment
