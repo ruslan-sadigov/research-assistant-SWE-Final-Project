@@ -42,8 +42,10 @@ punctuation is removed, so symbols that carry meaning inside a query survive:
 `"What is C++?"` becomes `"what is c++"`, not `"what is c"`.
 
 A question that normalises to nothing (`"???"`) raises `ValueError` rather than
-being stored under an empty key. Normalisation is purely textual: `"What is
-photosynthesis in plants?"` is a different key from `"What is photosynthesis?"`.
+being stored under an empty key. The CLI rejects such questions before they
+reach the cache: a question needs at least one letter or digit. Normalisation
+is purely textual: `"What is photosynthesis in plants?"` is a different key
+from `"What is photosynthesis?"`.
 
 ## Expiry
 

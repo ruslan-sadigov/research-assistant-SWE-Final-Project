@@ -20,6 +20,17 @@ def test_validate_question_rejects_whitespace_only():
         validate_question("     ", max_length=100)
 
 
+@pytest.mark.parametrize("raw", ["???", " . ! ", "\uff1f"])
+def test_validate_question_rejects_question_without_letters_or_digits(raw):
+    with pytest.raises(ValueError, match="letter or digit"):
+        validate_question(raw, max_length=100)
+
+
+@pytest.mark.parametrize("raw", ["C++?", "42", "Fotosintez n\u0259dir?"])
+def test_validate_question_accepts_any_letter_or_digit(raw):
+    assert validate_question(raw, max_length=100) == raw
+
+
 def test_validate_question_rejects_too_long():
     with pytest.raises(ValueError):
         validate_question("a" * 101, max_length=100)

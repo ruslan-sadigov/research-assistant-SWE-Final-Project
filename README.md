@@ -72,7 +72,10 @@ uv run python -m researcher ask "How do solar panels convert sunlight into elect
 
 `--sources` accepts `wiki`, `arxiv`, and `web`, separated by commas. Omitting it
 selects all three. Output includes the question, answer, numbered references,
-and any warnings. Questions must be nonempty and within the configured limit.
+and any warnings. Questions must contain at least one letter or digit and stay
+within the configured limit. Characters the terminal encoding cannot display
+(for example, when output is redirected on Windows) are printed as `\uXXXX`
+escapes.
 
 | Exit code | Meaning |
 |---|---|

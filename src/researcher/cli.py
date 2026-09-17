@@ -2,6 +2,7 @@
 
 import argparse
 import asyncio
+import io
 import logging
 import sys
 from pathlib import Path
@@ -52,6 +53,16 @@ def parse_sources(raw: str) -> list[SourceName]:
         )
     deduplicated = list(dict.fromkeys(requested))
     return cast(list[SourceName], deduplicated)
+
+
+def configure_output_streams() -> None:
+    """Escape characters the output encoding cannot represent instead of crashing.
+
+    Windows uses the ANSI code page when output is piped or redirected.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        if isinstance(stream, io.TextIOWrapper):
+            stream.reconfigure(errors="backslashreplace")
 
 
 def configure_logging(settings: Settings) -> None:
@@ -110,6 +121,7 @@ async def run_ask(
 
 
 def main() -> None:
+    configure_output_streams()
     parser = build_parser()
     args = parser.parse_args()
 

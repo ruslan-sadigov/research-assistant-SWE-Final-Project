@@ -13,13 +13,17 @@ def validate_question(question: str, max_length: int) -> str:
     Raises
     ------
     ValueError
-        If the question is empty (after trimming whitespace) or exceeds
-        max_length characters.
+        If the question is empty (after trimming whitespace), has no letters
+        or digits, or exceeds max_length characters.
     """
     cleaned = question.strip()
 
     if not cleaned:
         raise ValueError("Question must not be empty.")
+
+    # Punctuation-only questions have no cache key and nothing to search for.
+    if not any(character.isalnum() for character in cleaned):
+        raise ValueError("Question must contain at least one letter or digit.")
 
     if len(cleaned) > max_length:
         raise ValueError(

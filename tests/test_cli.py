@@ -1,4 +1,5 @@
 import asyncio
+import io
 import sys
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock
@@ -69,7 +70,8 @@ def test_main_forwards_arguments_and_exit_code(monkeypatch, code):
 
 
 @pytest.mark.parametrize(
-    "arguments", [[" "], ["question", "--sources", ""], ["question", "--sources", "bad\x1b[2J"]]
+    "arguments",
+    [[" "], ["???"], ["question", "--sources", ""], ["question", "--sources", "bad\x1b[2J"]],
 )
 def test_main_invalid_input_does_not_run_research(monkeypatch, capsys, arguments):
     run = AsyncMock()
@@ -84,6 +86,27 @@ def test_main_invalid_input_does_not_run_research(monkeypatch, capsys, arguments
     assert not output.out
     assert "Invalid input" in output.err
     assert "\x1b" not in output.err
+
+
+def test_main_escapes_characters_the_output_encoding_cannot_represent(monkeypatch):
+    # Windows uses the ANSI code page when output is piped or redirected.
+    stdout = io.TextIOWrapper(io.BytesIO(), encoding="cp1251", newline="\n")
+
+    async def run(*args, **kwargs):
+        print("Fotosintez n\u0259dir \u2192 \u5149\u5408\u4f5c\u7528")
+        return 0
+
+    monkeypatch.setattr(sys, "stdout", stdout)
+    monkeypatch.setattr(cli, "load_settings", lambda: Settings(_env_file=None))
+    monkeypatch.setattr(cli, "run_ask", run)
+    monkeypatch.setattr(sys, "argv", ["researcher", "ask", "question"])
+    with pytest.raises(SystemExit) as exc:
+        cli.main()
+    assert exc.value.code == 0
+    stdout.flush()
+    assert stdout.buffer.getvalue().decode("cp1251") == (
+        "Fotosintez n\\u0259dir \\u2192 \\u5149\\u5408\\u4f5c\\u7528\n"
+    )
 
 
 def test_main_invalid_settings_has_no_traceback_or_raw_error(monkeypatch, capsys):
