@@ -28,4 +28,4 @@ def test_cache_verification_reports_the_documented_hit_rates(tmp_path: Path) -> 
         "combined": {"hits": 15, "lookups": 30, "hit_rate": 0.5},
     }
     assert [check["check"] for check in report["checks"] if not check["passed"]] == []
-    assert report["schema"]["user_version"] == 1
+    assert report["schema"]["user_version"] == 2

@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import math
+import os
 import time
 from collections.abc import Awaitable, Callable
 from contextlib import AbstractAsyncContextManager
@@ -187,6 +188,16 @@ class RetryingTransport(httpx.AsyncBaseTransport):
 
     async def aclose(self) -> None:
         await self._transport.aclose()
+
+
+def source_fetch_settings(settings: Settings, source: SourceName) -> dict[str, str | int]:
+    """Describe the configuration that shapes a fetch, for cache invalidation."""
+    fetch_settings: dict[str, str | int] = {"max_results": settings.max_sources_per_query}
+    if source == "web":
+        # Mirror ai.get_web_search_provider(), which reads the variable per call.
+        provider = os.getenv("WEB_SEARCH_PROVIDER", "tavily").lower().strip()
+        fetch_settings["web_search_provider"] = "duckduckgo" if provider == "ddg" else provider
+    return fetch_settings
 
 
 class SourceFetcher(Protocol):

@@ -141,7 +141,7 @@ References:
 Read back from the database the script created:
 
 ```sql
--- PRAGMA user_version = 1; journal_mode = delete
+-- PRAGMA user_version = 2; journal_mode = delete
 CREATE TABLE cache_entries (
     source TEXT NOT NULL,
     query_key TEXT NOT NULL,
@@ -169,7 +169,7 @@ CREATE TABLE cache_entries (
   of what Wikipedia, arXiv and the web-search provider returned at fetch time;
   those services stay authoritative. Deleting the file loses speed and API
   quota, not information. `query_key` is derived from the question, and
-  `created_at` and `expires_at` are cache metadata. Answers are not stored.
+  `fetch_settings`, `created_at` and `expires_at` are cache metadata. Answers are not stored.
 
 Sample payload (`wiki`, q1):
 
@@ -185,6 +185,9 @@ Sample payload (`wiki`, q1):
       "origin": "wikipedia"
     }
   ],
+  "fetch_settings": {
+    "max_results": 3
+  },
   "created_at": "2026-09-16T20:14:16.202181Z",
   "expires_at": "2026-09-17T20:14:16.202181Z"
 }
@@ -201,11 +204,10 @@ These are observations only; no application code was changed.
    Wikipedia as empty from the cache for 24 hours without asking again. Short
    topic queries use their own keys. Possible remedy: a shorter TTL for empty
    entries.
-2. **The key ignores configuration.** It is `(source, normalised question)`
-   only. Entries fetched with a different `WEB_SEARCH_PROVIDER` or
-   `MAX_SOURCES_PER_QUERY` are served until they expire. Possible remedy: add
-   a settings fingerprint to the key. Until then, delete the file or point
-   `DATABASE_URL` elsewhere after such a change.
+2. **The key ignored configuration.** Entries fetched with a different
+   `WEB_SEARCH_PROVIDER` or `MAX_SOURCES_PER_QUERY` were served until they
+   expired. Resolved after this run: entries now record their fetch settings,
+   and a mismatch is a miss (schema version 2; see [caching](caching.md#invalidation)).
 3. **Expired rows are never deleted.** They are replaced only when the same
    question is fetched again, so the file grows with every distinct question.
    Expiry exists only inside the JSON payload, which rules out a simple

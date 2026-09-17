@@ -54,8 +54,19 @@ def normalize_query(query: str) -> str:
     return key
 
 
+def no_fetch_settings(source: SourceName) -> dict[str, str | int]:
+    """Default for callers whose fetches do not depend on configuration."""
+    return {}
+
+
 class SourceCache:
-    """Cache keyed by (source, normalised query) with a fixed time to live."""
+    """Cache keyed by (source, normalised query) with a fixed time to live.
+
+    Each entry also records the fetch settings (such as the result limit or web
+    search provider) it was fetched with. An entry recorded under different
+    settings is a miss, so a configuration change refetches instead of serving
+    results the current configuration would not produce.
+    """
 
     def __init__(
         self,
@@ -63,12 +74,14 @@ class SourceCache:
         ttl_seconds: int,
         *,
         clock: Callable[[], datetime] = utc_now,
+        fetch_settings: Callable[[SourceName], dict[str, str | int]] = no_fetch_settings,
     ) -> None:
         if ttl_seconds <= 0:
             raise ValueError(f"ttl_seconds must be positive, got {ttl_seconds}")
         self._store = store
         self._ttl = timedelta(seconds=ttl_seconds)
         self._clock = clock
+        self._fetch_settings = fetch_settings
 
     async def get_sources(self, source: SourceName, query: str) -> list[Source] | None:
         """Return cached sources, or None when there is no usable entry.
@@ -88,6 +101,10 @@ class SourceCache:
             logger.debug("cache expired: source=%s key=%r", source, query_key)
             return None
 
+        if entry.fetch_settings != self._fetch_settings(source):
+            logger.debug("cache settings changed: source=%s key=%r", source, query_key)
+            return None
+
         logger.debug("cache hit: source=%s key=%r n=%d", source, query_key, len(entry.sources))
         # Copy so a caller cannot mutate the list held by the store.
         return list(entry.sources)
@@ -100,6 +117,7 @@ class SourceCache:
             source=source,
             query_key=query_key,
             sources=list(sources),
+            fetch_settings=self._fetch_settings(source),
             created_at=created_at,
             expires_at=created_at + self._ttl,
         )

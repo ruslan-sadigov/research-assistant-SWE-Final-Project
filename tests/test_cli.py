@@ -201,6 +201,22 @@ def test_cli_reuses_sqlite_between_separate_event_loops(tmp_path, offline_cli):
     assert OfflineAIService.fetch_count == 2
 
 
+def test_cli_refetches_after_fetch_settings_change(tmp_path, monkeypatch, offline_cli):
+    url = "sqlite:///" + (tmp_path / "sources.sqlite3").as_posix()
+    monkeypatch.setenv("WEB_SEARCH_PROVIDER", "tavily")
+    runs = [
+        (Settings(database_url=url, max_sources_per_query=3), 1),
+        (Settings(database_url=url, max_sources_per_query=3), 1),
+        (Settings(database_url=url, max_sources_per_query=5), 2),
+    ]
+    for settings, expected_fetches in runs:
+        assert asyncio.run(cli.run_ask(settings, "question", ["web"], True)) == 0
+        assert OfflineAIService.fetch_count == expected_fetches
+    monkeypatch.setenv("WEB_SEARCH_PROVIDER", "serper")
+    assert asyncio.run(cli.run_ask(runs[-1][0], "question", ["web"], True)) == 0
+    assert OfflineAIService.fetch_count == 3
+
+
 @pytest.mark.asyncio
 async def test_no_cache_does_not_create_database(tmp_path, offline_cli):
     path = tmp_path / "unused.sqlite3"

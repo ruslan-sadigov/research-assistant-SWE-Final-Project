@@ -153,6 +153,56 @@ async def test_caller_cannot_mutate_the_cached_list(cache: SourceCache) -> None:
     assert len(second) == 1
 
 
+class FakeFetchSettings:
+    """Mutable fetch settings, as if the configuration changed between runs."""
+
+    def __init__(self) -> None:
+        self.max_results = 3
+
+    def __call__(self, source: str) -> dict[str, str | int]:
+        return {"max_results": self.max_results, "source": source}
+
+
+@pytest.mark.asyncio
+async def test_entry_records_the_fetch_settings_it_was_fetched_with(clock: FakeClock) -> None:
+    store = InMemoryCacheStore()
+    cache = SourceCache(store, ttl_seconds=TTL, clock=clock, fetch_settings=FakeFetchSettings())
+    await cache.set_sources("wiki", "question", [make_source()])
+
+    entry = await store.get_entry("wiki", "question")
+    assert entry is not None
+    assert entry.fetch_settings == {"max_results": 3, "source": "wiki"}
+
+
+@pytest.mark.asyncio
+async def test_entry_from_other_fetch_settings_is_a_miss_until_rewritten(clock: FakeClock) -> None:
+    settings = FakeFetchSettings()
+    cache = SourceCache(InMemoryCacheStore(), ttl_seconds=TTL, clock=clock, fetch_settings=settings)
+    await cache.set_sources("wiki", "question", [make_source()])
+
+    settings.max_results = 5
+    assert await cache.get_sources("wiki", "question") is None
+
+    await cache.set_sources("wiki", "question", [make_source("Newer")])
+    cached = await cache.get_sources("wiki", "question")
+    assert cached is not None
+    assert [source.title for source in cached] == ["Newer"]
+
+
+@pytest.mark.asyncio
+async def test_entry_without_recorded_settings_is_a_miss_once_settings_apply(
+    clock: FakeClock,
+) -> None:
+    # Entries written before fetch settings were recorded have none.
+    store = InMemoryCacheStore()
+    await SourceCache(store, ttl_seconds=TTL, clock=clock).set_sources(
+        "wiki", "question", [make_source()]
+    )
+
+    cache = SourceCache(store, ttl_seconds=TTL, clock=clock, fetch_settings=FakeFetchSettings())
+    assert await cache.get_sources("wiki", "question") is None
+
+
 @pytest.mark.asyncio
 async def test_rejects_a_naive_clock() -> None:
     naive = SourceCache(InMemoryCacheStore(), ttl_seconds=TTL, clock=lambda: datetime(2026, 1, 1))

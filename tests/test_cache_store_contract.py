@@ -69,7 +69,7 @@ async def test_new_database_has_the_documented_schema(tmp_path: Path) -> None:
         ]
         foreign_keys = conn.execute("PRAGMA foreign_key_list(cache_entries)").fetchall()
 
-    assert version == (1,)
+    assert version == (2,)
     assert objects == [
         ("index", "sqlite_autoindex_cache_entries_1", "cache_entries"),
         ("table", "cache_entries", "cache_entries"),
@@ -105,7 +105,14 @@ async def test_rows_hold_the_normalised_key_and_the_whole_entry_as_json(
     ]
     for source, key, payload in rows:
         document = json.loads(payload)
-        assert set(document) == {"source", "query_key", "sources", "created_at", "expires_at"}
+        assert set(document) == {
+            "source",
+            "query_key",
+            "sources",
+            "fetch_settings",
+            "created_at",
+            "expires_at",
+        }
         assert (document["source"], document["query_key"]) == (source, key)
         assert document["sources"] == [
             {

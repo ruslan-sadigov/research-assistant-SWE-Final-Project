@@ -9,7 +9,7 @@ import pytest
 
 from ai.providers.base import ProviderError
 from researcher.config import Settings
-from researcher.services.ai_service import AIService
+from researcher.services.ai_service import AIService, source_fetch_settings
 
 
 @pytest.fixture(autouse=True)
@@ -728,3 +728,23 @@ async def test_tavily_unauthorized_not_retried(dummy_settings, monkeypatch, capl
     sleep.assert_not_awaited()
     assert "http_status=401" in caplog.text
     assert "tvly-offline-test-key" not in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("source", "provider", "expected"),
+    [
+        ("wiki", "serper", {"max_results": 3}),
+        ("arxiv", "serper", {"max_results": 3}),
+        ("web", None, {"max_results": 3, "web_search_provider": "tavily"}),
+        ("web", " Serper ", {"max_results": 3, "web_search_provider": "serper"}),
+        ("web", "ddg", {"max_results": 3, "web_search_provider": "duckduckgo"}),
+    ],
+)
+def test_source_fetch_settings_follow_what_the_fetchers_use(
+    dummy_settings, monkeypatch, source, provider, expected
+):
+    if provider is None:
+        monkeypatch.delenv("WEB_SEARCH_PROVIDER", raising=False)
+    else:
+        monkeypatch.setenv("WEB_SEARCH_PROVIDER", provider)
+    assert source_fetch_settings(dummy_settings, source) == expected

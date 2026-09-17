@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import sqlite3
 import threading
 from contextlib import closing
@@ -320,6 +321,34 @@ async def test_unsupported_version_is_preserved_and_connection_closed(tmp_path, 
     with closing(original_connect(path)) as conn:
         assert conn.execute("PRAGMA user_version").fetchone() == (99,)
         assert conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall() == []
+
+
+@pytest.mark.asyncio
+async def test_version_1_database_is_upgraded_and_its_entries_stay_readable(tmp_path):
+    # Version 1 payloads predate the recorded fetch settings.
+    path = tmp_path / "cache.db"
+    entry = make_entry(query_key="old")
+    payload = json.loads(entry.model_dump_json())
+    del payload["fetch_settings"]
+    with closing(sqlite3.connect(path)) as conn:
+        conn.execute(
+            "CREATE TABLE cache_entries (source TEXT NOT NULL, query_key TEXT NOT NULL, "
+            "payload TEXT NOT NULL, PRIMARY KEY (source, query_key))"
+        )
+        conn.execute(
+            "INSERT INTO cache_entries VALUES (?, ?, ?)", ("wiki", "old", json.dumps(payload))
+        )
+        conn.execute("PRAGMA user_version = 1")
+        conn.commit()
+    store = SqliteCacheStore(path)
+    try:
+        restored = await store.get_entry("wiki", "old")
+    finally:
+        await store.close()
+    assert restored is not None
+    assert restored.fetch_settings == {}
+    with closing(sqlite3.connect(path)) as conn:
+        assert conn.execute("PRAGMA user_version").fetchone() == (2,)
 
 
 @pytest.mark.asyncio

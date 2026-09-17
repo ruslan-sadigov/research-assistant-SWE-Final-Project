@@ -67,6 +67,8 @@ class CacheEntry(AppModel):
     source: SourceName
     query_key: str = Field(min_length=1)
     sources: list[Source] = Field(default_factory=list)
+    # Settings that shaped the fetch; empty for entries written before they were recorded.
+    fetch_settings: dict[str, str | int] = Field(default_factory=dict)
     created_at: AwareDatetime
     expires_at: AwareDatetime
 

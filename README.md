@@ -88,6 +88,8 @@ escapes.
 SQLite is created automatically at
 `~/.cache/research-assistant/sources.sqlite3`; no database server is required.
 To use a project-local file, set `DATABASE_URL=sqlite:///.cache/sources.sqlite3`.
+Changing `MAX_SOURCES_PER_QUERY` or `WEB_SEARCH_PROVIDER` refetches affected
+entries instead of serving evidence gathered under the old settings.
 See [cache documentation](docs/caching.md) for details.
 
 Run the same question twice without `--no-cache` to check `cache_hit=True` in the

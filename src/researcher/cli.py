@@ -2,6 +2,7 @@
 
 import argparse
 import asyncio
+import functools
 import io
 import logging
 import sys
@@ -13,7 +14,7 @@ from researcher.config import Settings, load_settings
 from researcher.core.researcher import Researcher, render_result, sanitize_output, validate_question
 from researcher.interfaces import CacheStoreProtocol
 from researcher.models import SourceName
-from researcher.services.ai_service import AIService
+from researcher.services.ai_service import AIService, source_fetch_settings
 from researcher.services.cache import SourceCache
 from researcher.storage.cache_store import InMemoryCacheStore, SqliteCacheStore
 
@@ -103,7 +104,11 @@ async def run_ask(
 
     try:
         ai_service = AIService(settings)
-        cache = SourceCache(store, settings.cache_ttl_seconds)
+        cache = SourceCache(
+            store,
+            settings.cache_ttl_seconds,
+            fetch_settings=functools.partial(source_fetch_settings, settings),
+        )
         orchestrator = SourceOrchestrator(settings, ai_service, cache)
         researcher = Researcher(orchestrator, ai_service)
         result = await researcher.research(question, sources, use_cache=use_cache)

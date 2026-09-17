@@ -55,7 +55,7 @@ timezone-aware UTC; on read it asks `CacheEntry.is_expired(now)`.
 
 | `get_sources` returns | Meaning |
 |---|---|
-| `None` | nothing cached, or the entry expired -- fetch from the source |
+| `None` | nothing cached, the entry expired, or it was fetched with other settings -- fetch from the source |
 | `[]` | the source was already asked and genuinely returned nothing |
 | `[Source, ...]` | cached evidence, still fresh |
 
@@ -115,12 +115,15 @@ CREATE TABLE IF NOT EXISTS cache_entries (
 ```
 
 `source` and `query_key` are real columns because `get_entry` looks up by them;
-`payload` holds the whole `CacheEntry` (including `created_at` / `expires_at`)
-as JSON via pydantic's own `model_dump_json` / `model_validate_json`, so the
-payload is validated against the model on read. Initialization reads
-`PRAGMA user_version` and rejects unsupported versions without overwriting
-them. Version 0 databases are initialized (or adopted if their existing cache
-table matches); version 1 databases must already have the expected table.
+`payload` holds the whole `CacheEntry` (including `fetch_settings`,
+`created_at` / `expires_at`) as JSON via pydantic's own `model_dump_json` /
+`model_validate_json`, so the payload is validated against the model on read.
+Initialization reads `PRAGMA user_version` and rejects unsupported versions
+without overwriting them. Version 0 databases are initialized (or adopted if
+their existing cache table matches). Version 2 added `fetch_settings` to the
+payload; version 1 files have the same table and are upgraded in place, their
+entries read as having no recorded settings and are refetched once. Versions 1
+and 2 must already have the expected table.
 Table columns and primary-key structure are checked before use.
 
 The table has no index other than the automatic unique one for the primary
@@ -198,13 +201,15 @@ with one warning line per source, until the file is removed.
 
 ## Invalidation
 
-Entries expire by TTL only; there is no eviction command. The key contains
-only the source and the normalised question, not `WEB_SEARCH_PROVIDER`,
-`MAX_SOURCES_PER_QUERY` or the provider's own behaviour. After changing those,
-cached entries no longer describe what the application would fetch today --
-delete the cache database, or set `DATABASE_URL` to a different file.
-`PRAGMA user_version` and the composite key give a natural place to add
-per-setting namespacing later.
+Entries expire by TTL; there is no eviction command. Each entry also records
+the fetch settings it was fetched with: `MAX_SOURCES_PER_QUERY` for every
+source, plus the normalised `WEB_SEARCH_PROVIDER` for `web`
+(`source_fetch_settings` in `researcher.services.ai_service`). An entry whose
+recorded settings differ from the current ones is a miss; the next fetch
+overwrites it. The key itself stays `(source, normalised question)`, so
+switching a setting back and forth refetches each time rather than keeping
+one row per configuration. A provider's own behaviour changing over time is
+covered only by the TTL.
 
 Choose a cache path outside version control; `.cache/` is already covered by
 `.gitignore`.
@@ -214,14 +219,16 @@ Choose a cache path outside version control; `.cache/` is already covered by
 `tests/test_cache.py` and `tests/test_cache_store.py` -- offline tests, no
 network, no filesystem dependency beyond `tmp_path`. They cover the
 normalisation table (including `C++`, `C#` and `A*`), cached-empty versus miss,
-TTL boundaries with an injected clock, per-source isolation, defensive copying,
+TTL boundaries with an injected clock, misses after a fetch-settings change,
+per-source isolation, defensive copying,
 persistence across store instances, upsert overwriting a row rather than
 duplicating it, and `CacheStoreError` on an unreadable database or a row that
 no longer validates as a `CacheEntry`.
 
 Regression tests cover concurrent store instances, cancellation during writes
 and initialization, subsequent reads/writes/closure, rollback after a deferred
-constraint fails at commit, unsupported schema versions, initialization
+constraint fails at commit, unsupported schema versions, the version 1 upgrade,
+initialization
 cleanup, and filesystem errors. Test-created connections are explicitly closed.
 
 - `tests/test_cache_store_contract.py` pins the documented schema, index,

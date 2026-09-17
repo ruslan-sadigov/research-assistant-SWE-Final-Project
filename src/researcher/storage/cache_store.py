@@ -26,7 +26,10 @@ from researcher.models import CacheEntry, SourceName
 
 logger = logging.getLogger(__name__)
 
-_SCHEMA_VERSION = 1
+# Version 2 records fetch settings in the payload. Version 1 payloads still
+# validate (with no recorded settings), so version 1 files upgrade in place.
+_SCHEMA_VERSION = 2
+_UPGRADABLE_VERSIONS = (0, 1)
 
 _CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS cache_entries (
@@ -138,7 +141,7 @@ class SqliteCacheStore:
                 # Serialize initialization against other store instances.
                 conn.execute("BEGIN IMMEDIATE")
                 (version,) = conn.execute("PRAGMA user_version").fetchone()
-                if version not in (0, _SCHEMA_VERSION):
+                if version not in (*_UPGRADABLE_VERSIONS, _SCHEMA_VERSION):
                     raise CacheStoreError(f"unsupported cache schema version: {version}")
                 if version == 0:
                     conn.execute(_CREATE_TABLE)
@@ -150,7 +153,7 @@ class SqliteCacheStore:
                     ("payload", "TEXT", 1, 0),
                 ]:
                     raise CacheStoreError("incompatible cache table schema")
-                if version == 0:
+                if version != _SCHEMA_VERSION:
                     conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
             return conn
         except (OSError, sqlite3.Error, CacheStoreError) as exc:
