@@ -728,3 +728,37 @@ async def test_tavily_unauthorized_not_retried(dummy_settings, monkeypatch, capl
     sleep.assert_not_awaited()
     assert "http_status=401" in caplog.text
     assert "tvly-offline-test-key" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_fetch_sources_invalid_source(dummy_settings):
+    """Verifies ValueError is raised when an unsupported provider string is passed."""
+    service = AIService(dummy_settings)
+    async with service.open_source_client() as client:
+        with pytest.raises(ValueError):
+            await service.fetch_sources("unsupported_source", "query", client=client)
+
+
+@pytest.mark.asyncio
+async def test_fetch_sources_max_retries_exceeded():
+    """Verifies exception propagation after reaching max attempts limit."""
+    settings = MagicMock()
+    settings.per_source_timeout_seconds = 5.0
+    settings.retry_max_attempts = 1
+    settings.max_retries = 1
+    settings.retry_initial_delay_seconds = 0.001
+    settings.retry_max_delay_seconds = 0.01
+
+    service = AIService(settings)
+
+    with (
+        patch("ai.fetch_wikipedia", new_callable=AsyncMock) as mock_wiki,
+        patch("asyncio.sleep", new_callable=AsyncMock),
+    ):
+        mock_wiki.side_effect = Exception("Persistent connection error")
+
+        async with service.open_source_client() as client:
+            with pytest.raises(Exception):
+                await service.fetch_sources("wiki", "query", client=client)
+
+        assert mock_wiki.call_count == 1
