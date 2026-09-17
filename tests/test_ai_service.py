@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
-import ai
 
 from ai.providers.base import ProviderError
 from researcher.config import Settings
