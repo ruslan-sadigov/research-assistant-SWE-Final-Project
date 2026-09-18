@@ -35,7 +35,7 @@ If one member contributed less than 10% without a documented reason (illness, em
 
 ---
 
-## Member B — _[Polad Ibrahimli]_ (`@Polad-Ibrahimli`)
+## Member B — Polad Ibrahimli (`@Polad-Ibrahimli`)
 
 **Owned:**
 - `src/researcher/core/researcher.py` (validate_question/render_result/Researcher class)
