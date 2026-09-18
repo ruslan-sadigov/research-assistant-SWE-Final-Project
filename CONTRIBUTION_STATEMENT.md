@@ -35,18 +35,17 @@ If one member contributed less than 10% without a documented reason (illness, em
 
 ---
 
-## Member B — _[Full Name]_ (`@github-handle`)
+## Member B — _[Polad Ibrahimli]_ (`@Polad-Ibrahimli`)
 
 **Owned:**
-- _[list]_
+- `src/researcher/core/researcher.py` (validate_question/render_result/Researcher class)
+-`tests/test_researcher.py`
 
 **Co-owned:**
-- _[list]_
+- `src/researcher/cli.py`
+-`tests/test_cli.py`
 
-**Reviewed:**
-- _[list]_
-
-**Approximate share of commits:** _[33]_%
+**Approximate share of commits:** _[14]_%
 
 ---
 
