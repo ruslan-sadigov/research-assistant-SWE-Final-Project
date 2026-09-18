@@ -106,6 +106,6 @@ By signing below, we affirm that:
 | Member | Signature | Date |
 |---|---|---|
 | Nihat Ismayilzade | **Nihat Ismayilzade** | **18.09.2026** |
-| Polad Ibrahimli |  |  |
+| Polad Ibrahimli | **Polad Ibrahimli** | **18.09.2026** |
 | Samur Eyyubov | **Samur Eyyubov** | **18.09.2026** |
 | Ruslan Sadigov | **Ruslan Sadigov** | **18.09.2026** |
