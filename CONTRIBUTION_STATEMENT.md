@@ -4,22 +4,7 @@
 **Topic:** Topic 4 — Async Research Assistant
 **Repository:** https://github.com/ruslan-sadigov/research-assistant-SWE-Final-Project
 **Final tag:** `v1.0-final`
-**Submission date:** [2026-09-18]
-
----
-
-## How to fill this in
-
-This is the single piece of evidence we use to assess **individual contribution** within the team. Rules:
-
-1. Every member writes their own three subsections (Owned, Co-owned, Reviewed).
-2. **Be specific.** "Worked on the backend" is not acceptable; "implemented `src/services/ai_service.py` and `src/concurrency/pipeline.py`, owned PRs #4, #7, #11" is.
-3. The committed-percentages must add to 100% and approximately match `git shortlog -sn` on the `main` branch.
-4. All three members must sign at the bottom. Unsigned submissions are returned ungraded.
-
-If one member contributed less than 10% without a documented reason (illness, emergency), the team loses 5 points automatically per the rubric.
-
----
+**Submission date:** 2026-09-18
 
 ## Member A — Nihat Ismayilzade (`@NihatIsmayilzade`)
 
@@ -30,8 +15,10 @@ If one member contributed less than 10% without a documented reason (illness, em
 - `src/services/ai_service.py`
 - `tests/test_services.py`
 
+**Reviewed (PRs reviewed and merged):**
+- PRs: no recorded reviews or merges
 
-**Approximate share of commits:** _[34]_%
+**Approximate share of commits:** 14%
 
 ---
 
@@ -45,7 +32,10 @@ If one member contributed less than 10% without a documented reason (illness, em
 - `src/researcher/cli.py`
 - `tests/test_cli.py`
 
-**Approximate share of commits:** _[14]_%
+**Reviewed:**
+- PRs: no recorded reviews or merges
+
+**Approximate share of commits:** 17%
 
 ---
 
@@ -66,9 +56,31 @@ If one member contributed less than 10% without a documented reason (illness, em
 - `src/researcher/storage/cache_store.py` and `tests/test_cache_store.py` — I wrote both; Ruslan hardened the transactions, schema checks and cancellation handling
 
 **Reviewed:**
-- PRs: none
+- PR #1 — self-merged; no recorded peer review
 
-**Approximate share of commits:** 15%
+**Approximate share of commits:** 18%
+
+---
+
+## Member D — Ruslan Sadigov (`@ruslan-sadigov`)
+
+**Owned:**
+- Project setup, packaging, configuration, shared interfaces and research models: `pyproject.toml`, `src/researcher/config.py`, `src/researcher/interfaces.py`, and `src/researcher/models.py`
+- Concurrent source orchestration and diagnostics: `src/researcher/concurrency/orchestrator.py` and `tests/test_orchestrator.py`
+- AI-service reliability and arXiv rate limiting: `src/researcher/services/ai_service.py`, `src/researcher/services/arxiv_limit.py`, and their tests
+- CI, Docker workflow, live-source benchmarks, and supporting documentation
+
+**Co-owned:**
+- `src/researcher/cli.py` and `tests/test_cli.py` — input validation, failure handling, and persistent source caching
+- `src/researcher/storage/cache_store.py` and `tests/test_cache_store.py` — transaction, schema-check, and cancellation hardening
+
+**Reviewed:**
+- Reviewed: PR #13 — requested changes
+- Merged: PRs #3, #4, #7, #9, #14, #15, #17
+
+**Approximate share of commits:** 51%
+
+---
 
 ## AI tool disclosure (also in §10 of the report)
 
@@ -76,9 +88,8 @@ We used AI coding assistants as follows. Each item lists the module, the assista
 
 | Module / file | Assistant | What we did with it |
 |---|---|---|
-| _[e.g. `src/services/retry.py`]_ | _[Cursor]_ | _[Drafted initial backoff logic; team rewrote the jitter and retry-on-429 branch after observing rate-limit behavior in dev.]_ |
-| _[e.g. `tests/test_pipeline.py`]_ | _[Claude]_ | _[Suggested test cases; team reviewed each, kept 4 of 6, hand-wrote 2 more.]_ |
 | `docs/figures/architecture.*`, `docs/architecture.md`, `docs/cache-verification.md`, `tests/cache_verification.py`, `tests/test_cache_*.py` | Claude | Drafted the figure, the cache verification harness, the cache tests and the two cache documents; I reviewed each file, ran the full suite and the harness locally, and corrected the facts against the code before committing. |
+| Researcher application code, tests, CI/Docker setup, and supporting documentation | OpenAI Codex | Assisted with implementation drafts, debugging, test design, CI/Docker configuration, and documentation. The responsible team members reviewed and adapted the output, ran the relevant checks, and verified the final behavior before committing. |
 
 We affirm that we **can defend every line of code** in this repository during the oral defense. "The AI wrote it" is not an answer we will use.
 
@@ -94,6 +105,7 @@ By signing below, we affirm that:
 
 | Member | Signature | Date |
 |---|---|---|
-| _[Full Name A]_ | ______Nihat Ismayilzade____________________ | __18.09.2026________ |
-| _[Full Name B]_ | __________________________ | __________ |
-| _[Full Name C]_ | __Samur Eyyubov________________________ | __18.09.2026________ |
+| Nihat Ismayilzade | **Nihat Ismayilzade** | **18.09.2026** |
+| Polad Ibrahimli |  |  |
+| Samur Eyyubov | **Samur Eyyubov** | **18.09.2026** |
+| Ruslan Sadigov | **Ruslan Sadigov** | **18.09.2026** |
