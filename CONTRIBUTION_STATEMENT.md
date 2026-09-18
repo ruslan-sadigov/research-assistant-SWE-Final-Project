@@ -78,7 +78,7 @@ We used AI coding assistants as follows. Each item lists the module, the assista
 |---|---|---|
 | _[e.g. `src/services/retry.py`]_ | _[Cursor]_ | _[Drafted initial backoff logic; team rewrote the jitter and retry-on-429 branch after observing rate-limit behavior in dev.]_ |
 | _[e.g. `tests/test_pipeline.py`]_ | _[Claude]_ | _[Suggested test cases; team reviewed each, kept 4 of 6, hand-wrote 2 more.]_ |
-| _[...]_ | _[...]_ | _[...]_ |
+| `docs/figures/architecture.*`, `docs/architecture.md`, `docs/cache-verification.md`, `tests/cache_verification.py`, `tests/test_cache_*.py` | Claude | Drafted the figure, the cache verification harness, the cache tests and the two cache documents; I reviewed each file, ran the full suite and the harness locally, and corrected the facts against the code before committing. |
 
 We affirm that we **can defend every line of code** in this repository during the oral defense. "The AI wrote it" is not an answer we will use.
 
@@ -96,4 +96,4 @@ By signing below, we affirm that:
 |---|---|---|
 | _[Full Name A]_ | ______Nihat Ismayilzade____________________ | __18.09.2026________ |
 | _[Full Name B]_ | __________________________ | __________ |
-| _[Full Name C]_ | __________________________ | __________ |
+| _[Full Name C]_ | __Samur Eyyubov________________________ | __18.09.2026________ |
