@@ -39,11 +39,11 @@ If one member contributed less than 10% without a documented reason (illness, em
 
 **Owned:**
 - `src/researcher/core/researcher.py` (validate_question/render_result/Researcher class)
--`tests/test_researcher.py`
+- `tests/test_researcher.py`
 
 **Co-owned:**
 - `src/researcher/cli.py`
--`tests/test_cli.py`
+- `tests/test_cli.py`
 
 **Approximate share of commits:** _[14]_%
 
