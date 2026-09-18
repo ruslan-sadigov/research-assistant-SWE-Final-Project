@@ -49,20 +49,26 @@ If one member contributed less than 10% without a documented reason (illness, em
 
 ---
 
-## Member C — _[Full Name]_ (`@github-handle`)
+## Member C — Samur Eyyubov (`@eyyubovsamur240-afk`)
 
-**Owned:**
-- _[list]_
+**Owned (sole author of these files / PRs):**
+- `src/researcher/services/cache.py` (cache keys, query normalisation, TTL expiry)
+- `src/researcher/storage/cache_store.py` (SQLite and in-memory stores)
+- `tests/test_cache.py`, `tests/test_cache_store.py`
+- `tests/test_cache_store_contract.py`, `tests/test_cache_integration.py`, `tests/test_cache_verification.py`
+- `tests/cache_verification.py` (offline cache hit-rate harness)
+- `docs/caching.md`, `docs/cache-verification.md`, `docs/architecture.md`
+- `docs/figures/architecture.tex` and the exported `architecture.pdf` / `architecture.png`
+- `artefacts/demo/README.md`
+- PRs: #14, #15
 
 **Co-owned:**
-- _[list]_
+- `src/researcher/storage/cache_store.py` and `tests/test_cache_store.py` — I wrote both; Ruslan hardened the transactions, schema checks and cancellation handling
 
 **Reviewed:**
-- _[list]_
+- PRs: none
 
-**Approximate share of commits:** _[33]_%
-
----
+**Approximate share of commits:** 15%
 
 ## AI tool disclosure (also in §10 of the report)
 
