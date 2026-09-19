@@ -7,21 +7,7 @@
 % Compile with pdfLaTeX twice. The figure is read from ../docs/figures/; on
 % Overleaf, upload docs/figures/architecture.pdf next to this file.
 % Do not commit .aux/.log/.out/.toc files.
-%
-% HOW TO USE
-% ----------
-%   1. Edit the CONFIGURATION block below (team name, topic, members).
-%   2. Replace every [TODO: ...] with your content. TODOs render in red,
-%      so anything you forgot will be visually obvious in the PDF.
-%   3. Three kinds of cues throughout:
-%        - REQUIRED DELIVERABLE box (blue): exactly what we expect.
-%        - PROBING QUESTIONS box (amber): NOT a checklist; these are
-%          prompts that should shape how you write the section. A strong
-%          response engages with at least 2 of them; a weak response
-%          ignores them all.
-%        - "Your response:" placeholders: replace with your text/diagram.
-%   4. Target length: 8-10 pages including figures, excluding bibliography.
-%   5. Compile with pdfLaTeX. Overleaf works out of the box.
+% Target length: 8-10 pages including figures, excluding bibliography.
 % =====================================================================
 
 \documentclass[11pt,a4paper]{article}
@@ -39,7 +25,7 @@
 \newcommand{\teamname}{Research Assistant Team}
 \newcommand{\topicchoice}{Topic 4 -- Async Research Assistant}
 \newcommand{\member}[2]{\textbf{#1} (#2)}  % name, GitHub handle
-\newcommand{\reportdate}{\today}
+\newcommand{\reportdate}{20 September 2026}
 \newcommand{\repolink}{\url{https://github.com/ruslan-sadigov/research-assistant-SWE-Final-Project}}
 
 % ===== course meta (rarely changes) ==================================
@@ -169,10 +155,10 @@
 
 % =====================================================================
 % ===== EVIDENCE VALUES (keep equal to the slides) =====================
-\newcommand{\owntests}{267}
+\newcommand{\owntests}{269}
 \newcommand{\smoketests}{16}
-\newcommand{\alltests}{283}
-\newcommand{\coveragepct}{98.44}
+\newcommand{\alltests}{285}
+\newcommand{\coveragepct}{98.58}
 \newcommand{\imagesize}{218.67\,MB}
 \newcommand{\cmd}[1]{\texttt{#1}}
 \lstdefinestyle{plain}{
@@ -340,19 +326,16 @@ classes. Components receive collaborators through their constructors, and
 \cmd{run\_ask()} in \cmd{cli.py} wires them:
 
 \begin{lstlisting}[style=python]
-# src/researcher/cli.py -- run_ask()
-ai_service = AIService(settings)
-cache = SourceCache(store, settings.cache_ttl_seconds)
-orchestrator = SourceOrchestrator(settings, ai_service, cache)
-researcher = Researcher(orchestrator, ai_service)
-result = await researcher.research(question, sources, use_cache=use_cache)
-
-# src/researcher/interfaces.py
+# interfaces.py -- a structural contract, no base class
 class CacheStoreProtocol(Protocol):
     async def get_entry(
         self, source: SourceName, query_key: str
     ) -> CacheEntry | None: ...
     async def upsert_entry(self, entry: CacheEntry) -> None: ...
+# cli.py, run_ask() -- the only place concrete classes are wired
+cache = SourceCache(store, settings.cache_ttl_seconds)
+orchestrator = SourceOrchestrator(settings, ai_service, cache)
+researcher = Researcher(orchestrator, ai_service)
 \end{lstlisting}
 
 \textbf{Why Protocols rather than ABCs.} The parts vary independently: two
@@ -420,7 +403,10 @@ of five alternating runs; recorded 2026-09-16 on Windows~11 (AMD64), Python
 Wikipedia, arXiv and Tavily requests, one measured pair per question, 3.1\,s pause
 before each collection; recorded 2026-09-16 on Windows, Python 3.12.11. Both use
 the five supplied questions with all three sources ($N = 3$ requests per
-question, 15 per mode) and \emph{no cache}; synthesis is excluded.
+question, 15 per mode) and \emph{no cache}; synthesis is excluded. Commands:
+\cmd{uv run python benchmarks/benchmark\_sources.py -{}-repeats 5} (offline) and
+\cmd{uv run python benchmarks/benchmark\_live\_sources.py -{}-repeats 1} (live);
+the full reproducer is in the appendix.
 
 \begin{center}\small
 \begin{tabular}{llcccc}
@@ -725,20 +711,21 @@ invalid values stop the CLI with exit code 2.
 \toprule
 \textbf{Variable (default)} & \textbf{Effect when missing} \\
 \midrule
-\cmd{LLM\_PROVIDER} (\cmd{gemini} in \cmd{.env.example}) & The supplied factory falls back to \cmd{anthropic}; without its key or SDK, synthesis fails: evidence is printed, exit code 1. \\
+\cmd{LLM\_PROVIDER} (\cmd{gemini} in \cmd{.env.example}) & The supplied factory falls back to \cmd{anthropic}; without its key or SDK, synthesis fails and evidence is printed (exit 1). \\
 \cmd{LLM\_MODEL} & The provider's built-in default model. \\
 \cmd{GOOGLE\_API\_KEY}\newline (or \cmd{GEMINI\_API\_KEY}, \cmd{LLM\_API\_KEY}) & Synthesis fails without retrying (``is not set''); evidence is still printed, exit code 1. \\
 \cmd{WEB\_SEARCH\_PROVIDER} (\cmd{tavily}) & Tavily is used. \\
 \cmd{TAVILY\_API\_KEY} & The web source fails at once with a warning; other sources continue. \\
-\cmd{LOG\_LEVEL} (INFO)\newline \cmd{MAX\_QUESTION\_LENGTH} (2000)\newline
-\cmd{PER\_SOURCE\_TIMEOUT\_SECONDS} (10)\newline \cmd{MAX\_SOURCES\_PER\_QUERY} (3)\newline
-\cmd{RETRY\_MAX\_ATTEMPTS} (3)\newline \cmd{RETRY\_INITIAL\_DELAY\_SECONDS} (0.5)\newline
-\cmd{RETRY\_MAX\_DELAY\_SECONDS} (4)\newline \cmd{CACHE\_TTL\_SECONDS} (86400)
-& The default in brackets applies. \\
 \cmd{DATABASE\_URL} (blank) & \cmd{\textasciitilde/.cache/research-assistant/sources.sqlite3}. \\
 \bottomrule
 \end{tabularx}
 \end{center}
+
+The remaining variables all fall back to the default in brackets when missing:
+\cmd{LOG\_LEVEL} (INFO), \cmd{MAX\_QUESTION\_LENGTH} (2000),
+\cmd{PER\_SOURCE\_TIMEOUT\_SECONDS} (10), \cmd{MAX\_SOURCES\_PER\_QUERY} (3),
+\cmd{RETRY\_MAX\_ATTEMPTS} (3), \cmd{RETRY\_INITIAL\_DELAY\_SECONDS} (0.5),
+\cmd{RETRY\_MAX\_DELAY\_SECONDS} (4) and \cmd{CACHE\_TTL\_SECONDS} (86400).
 
 % =====================================================================
 \section{Limitations \& Future Work}\label{sec:limits}
@@ -765,13 +752,30 @@ invalid values stop the CLI with exit code 2.
 % =====================================================================
 \section{Tools \& Acknowledgements}\label{sec:tools}
 
-\textbf{AI assistance.} Samur Eyyubov used Claude (Anthropic) to draft the
-architecture figure, the cache verification script
-(\cmd{tests/cache\_verification.py}) and the three new
-\cmd{tests/test\_cache\_*.py} files, the architecture and cache-verification
-documents, the presentation, and the first draft of this report; he reviewed
-the drafts against the repository before committing them. Each member's AI use
-in their own modules is listed in the signed contribution statement.
+\textbf{AI assistance.} The table repeats the signed contribution statement, plus
+one row for this revision. We can defend every line of code; ``the AI wrote it''
+is not an answer we use.
+
+\begin{center}\footnotesize
+\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{0.34\textwidth}>{\raggedright\arraybackslash}p{0.13\textwidth}X@{}}
+\toprule
+\textbf{Module / file} & \textbf{Assistant} & \textbf{What we did with it} \\
+\midrule
+\cmd{docs/figures/architecture.*}, architecture and cache documents,
+\cmd{tests/cache\_verification.py}, \cmd{tests/test\_cache\_*.py}; first drafts of
+this report and the deck & Claude (Anthropic) &
+Drafted the figure, harness, cache tests and documents. Samur Eyyubov reviewed
+each file, ran the suite and harness, and corrected facts against the code. \\
+Researcher application code, tests, CI/Docker setup, documentation & OpenAI Codex &
+Implementation drafts, debugging, test design, CI/Docker configuration and
+documentation. The responsible members reviewed and adapted the output and
+verified the behaviour before committing. \\
+\cmd{report/report.tex}, \cmd{slides/slides.tex} (final revision) & Claude (Claude Code) &
+Aligned both documents with the templates: refreshed figures, added this
+table, rebuilt the slides. Reviewed in a pull request. \\
+\bottomrule
+\end{tabularx}
+\end{center}
 
 \textbf{Acknowledgements.} The \texttt{ai/} package, sample questions, demo and
 smoke tests were supplied by the course. We build on httpx, Pydantic,

@@ -2,11 +2,12 @@
 % AI Academy -- National AI Center
 % Software Engineering Final Project -- Team Presentation Deck
 %
-% Built from templates/SLIDES_TEMPLATE.tex (preamble and slide order kept).
-% Changes to the template: a fourth member, the EVIDENCE VALUES block, a
-% graphics path for the shared architecture figure, a shell listing style,
-% a full-width footer (the original footer text ran together), and one extra
-% content slide for the cache evidence.
+% Built from templates/SLIDES_TEMPLATE.tex (preamble, colours and slide
+% order kept). Changes to the template: a fourth member; the EVIDENCE VALUES
+% block; the shared architecture figure; a "Technology stack" slide before
+% the architecture; a "Caching" slide for the cache evidence; icons
+% (fontawesome5) and small TikZ diagrams in place of plain text; a full-width
+% footer.
 %
 % Compile with pdfLaTeX twice (Overleaf: upload this file together with
 % docs/figures/architecture.pdf). Do not commit .aux/.log/.nav/.out/.snm/.toc.
@@ -23,7 +24,7 @@
 \newcommand{\memberthree}{Samur Eyyubov}
 \newcommand{\memberfour}{Polad Ibrahimli}
 \newcommand{\repolink}{github.com/ruslan-sadigov/research-assistant-SWE-Final-Project}
-\def\defensedate{} % set when known, e.g. \def\defensedate{24 September 2026}
+\newcommand{\defensedate}{20 September 2026}
 
 \newcommand{\coursecode}{AI-ENG-110}
 \newcommand{\coursename}{Software Engineering}
@@ -31,18 +32,17 @@
 \newcommand{\semester}{Spring 2026}
 
 % ===== EVIDENCE VALUES ================================================
-% Must equal the final report. Sources: pytest/coverage run of the branch,
-% docs/docker.md, and git shortlog on main (author aliases merged).
-\newcommand{\owntests}{267}
+% Must equal the final report. Sources: pytest/coverage run on main,
+% and non-merge commits on main (git shortlog, author aliases merged).
+\newcommand{\owntests}{269}
 \newcommand{\smoketests}{16}
-\newcommand{\coveragepct}{98.44}
-\newcommand{\imagesize}{218.67\,MB}
-\newcommand{\commitdate}{18 Sep 2026}
-\newcommand{\committotal}{81}
-\newcommand{\commitsone}{53 (65.4\%)}
-\newcommand{\commitstwo}{6 (7.4\%)}
-\newcommand{\commitsthree}{12 (14.8\%)}
-\newcommand{\commitsfour}{10 (12.3\%)}
+\newcommand{\coveragepct}{98.58}
+\newcommand{\commitdate}{20 Sep 2026}
+\newcommand{\committotal}{76}
+\newcommand{\cntone}{38}\newcommand{\pctone}{50.0}
+\newcommand{\cnttwo}{10}\newcommand{\pcttwo}{13.2}
+\newcommand{\cntthree}{15}\newcommand{\pctthree}{19.7}
+\newcommand{\cntfour}{13}\newcommand{\pctfour}{17.1}
 
 % ===== PACKAGES ======================================================
 \usepackage[T1]{fontenc}
@@ -51,13 +51,10 @@
 \usepackage{tabularx}
 \usepackage{booktabs}
 \usepackage{listings}
+\usepackage{fontawesome5}
 \usepackage{tikz}
-\usetikzlibrary{shapes.geometric,arrows.meta,positioning,fit,backgrounds}
+\usetikzlibrary{shapes.geometric,arrows.meta,positioning,fit,backgrounds,shadows,calc}
 \graphicspath{{../docs/figures/}{./}}
-
-% ===== EARLY MACROS ==================================================
-\definecolor{accent2}{HTML}{8B0000}
-\newcommand{\TODO}[1]{\textcolor{accent2}{\textbf{[TODO: #1]}}}
 
 % ===== BEAMER THEME (custom, no flashy decorations) =================
 \usetheme{default}
@@ -67,6 +64,8 @@
 \definecolor{accent}{HTML}{0B3D91}
 \definecolor{soft}{HTML}{F2F4F8}
 \definecolor{ok}{HTML}{166534}
+\definecolor{teal}{HTML}{0F766E}
+\definecolor{amber}{HTML}{B45309}
 
 \setbeamercolor{title}{fg=accent}
 \setbeamercolor{frametitle}{fg=accent}
@@ -93,18 +92,6 @@
 % ===== CODE LISTINGS =================================================
 \definecolor{codegreen}{rgb}{0,0.55,0}
 \definecolor{codepurple}{rgb}{0.55,0,0.78}
-\lstdefinestyle{python}{
-  language=Python,
-  backgroundcolor=\color{soft},
-  commentstyle=\color{codegreen},
-  keywordstyle=\color{accent},
-  stringstyle=\color{codepurple},
-  basicstyle=\ttfamily\scriptsize,
-  breaklines=true,
-  frame=single,
-  framerule=0.4pt,
-  rulecolor=\color{black!30},
-}
 \lstdefinestyle{shell}{
   basicstyle=\ttfamily\scriptsize,
   upquote=true,
@@ -116,6 +103,68 @@
   rulecolor=\color{black!30},
 }
 
+% ===== SHARED TIKZ STYLES AND MACROS ================================
+\tikzset{
+  card/.style={rounded corners=3pt, fill=white, draw=#1!55, line width=0.5pt,
+    drop shadow={shadow xshift=0.3pt, shadow yshift=-0.5pt, opacity=0.22, fill=black},
+    minimum width=4.5cm, minimum height=1.8cm, inner sep=0pt},
+  disc/.style={circle, fill=#1, text=white, minimum size=0.85cm, inner sep=0pt},
+  pill/.style={rounded corners=5pt, fill=#1, text=white, minimum width=4.5cm,
+    minimum height=0.42cm, inner sep=1pt, font=\scriptsize\bfseries},
+  stage/.style={rounded corners=4pt, draw=accent, fill=accent!8, align=center,
+    minimum height=0.95cm, minimum width=2.3cm, font=\footnotesize, inner sep=3pt},
+  flow/.style={-{Stealth[length=2.2mm]}, thick, color=black!55},
+}
+
+% One technology card: column, row, colour, icon, layer, technology, why.
+\newcommand{\techcard}[7]{%
+  \pgfmathsetmacro{\cx}{#1*4.75}%
+  \pgfmathsetmacro{\cy}{-0.6-#2*1.87}%
+  \node[card=#3, minimum height=1.75cm, anchor=north west] at (\cx,\cy) {};
+  \node[disc=#3, minimum size=0.62cm] at (\cx+0.47,\cy-0.45) {\normalsize #4};
+  \node[anchor=west, inner sep=0pt] at (\cx+0.9,\cy-0.45) {\footnotesize\bfseries\color{#3}#5};
+  \node[anchor=north west, text width=4.3cm, inner sep=0pt, align=left]
+    at (\cx+0.17,\cy-0.86) {%
+      {\scriptsize #6}\\[1pt]
+      {\scriptsize\itshape\color{black!60} #7}};
+}
+
+% One numbered design decision: y position, number, title, reason, trade-off.
+\newcommand{\decision}[5]{%
+  \node[disc=accent] at (0.5,#1) {\large\bfseries #2};
+  \node[anchor=north west, text width=12.4cm, inner sep=0pt, align=left]
+    at (1.3,#1+0.55) {%
+      {\normalsize\bfseries\color{accent}#3}\\[3pt]
+      {\small #4}\\[2pt]
+      {\small\itshape\color{black!65}#5}};
+}
+
+% A figure tile: x, width (cm), colour, value font, value, caption.
+\newcommand{\statTile}[6]{%
+  \node[card=#3, minimum width=#2 cm, minimum height=1.6cm, anchor=north west]
+    at (#1,0) {};
+  \node[anchor=center, text=#3, font=#4\bfseries] at (#1+#2/2,-0.5) {#5};
+  \node[anchor=north, text width=\dimexpr#2cm-0.3cm\relax, align=center,
+    font=\scriptsize, text=black!70] at (#1+#2/2,-0.92) {#6};
+}
+
+% One robustness card: x, y, colour, icon, title, text.
+\newcommand{\robustcard}[6]{%
+  \node[card=#3, minimum width=6.9cm, minimum height=2.6cm, anchor=north west]
+    at (#1,#2) {};
+  \node[disc=#3] at (#1+0.6,#2-1.3) {\Large #4};
+  \node[anchor=north west, text width=5.6cm, inner sep=0pt, align=left]
+    at (#1+1.2,#2-0.16) {%
+      {\small\bfseries\color{#3}#5}\\[2pt]
+      {\footnotesize #6}};
+}
+
+% A horizontal share bar, 0.05 cm per percent.
+\newcommand{\sharebar}[1]{%
+  \pgfmathsetlengthmacro{\barw}{#1*0.05cm}%
+  {\color{accent}\rule{\barw}{5pt}}%
+}
+
 % =====================================================================
 \begin{document}
 
@@ -124,172 +173,199 @@
 \setbeamertemplate{footline}{}
 \begin{frame}[plain]
   \begin{center}
-    \vspace{0.6cm}
+    \vspace{0.5cm}
     {\small \textsc{\institution}}\\[0.2em]
-    {\small \textsc{\coursecode{} -- \coursename{} -- \semester{}}}\\[1.2em]
+    {\small \textsc{\coursecode{} -- \coursename{} -- \semester{}}}\\[1.0em]
     \rule{0.7\textwidth}{0.6pt}\\[0.4em]
     {\LARGE\bfseries\color{accent} \topicchoice}\\[0.4em]
-    \rule{0.7\textwidth}{0.6pt}\\[1.2em]
-    {\large \teamname}\\[0.6em]
-    {\normalsize \memberone\quad\textbullet\quad\membertwo\quad\textbullet\quad\memberthree\quad\textbullet\quad\memberfour}\\[1cm]
-    {\footnotesize\itshape Final Project Defense\ifx\defensedate\empty\else{} -- \defensedate\fi}\\[0.4em]
+    {\small\itshape Evidence from Wikipedia, arXiv and the web, collected concurrently
+    and answered with citations}\\[0.4em]
+    \rule{0.7\textwidth}{0.6pt}\\[1.0em]
+    {\large \teamname}\\[0.5em]
+    {\normalsize \memberone\quad\textbullet\quad\membertwo\quad\textbullet\quad\memberthree\quad\textbullet\quad\memberfour}\\[0.9cm]
+    {\footnotesize\itshape Final Project Defense -- \defensedate}\\[0.4em]
     {\footnotesize\texttt{\repolink}}
   \end{center}
 \end{frame}
 }
 
 % ========== SLIDE 2: PROBLEM =========================================
-\begin{frame}{The problem in one sentence}
-  \begin{block}{What the system does}
-    A user asks a research question; the tool collects evidence from Wikipedia, arXiv and
-    web search at the same time and prints an LLM answer whose numbered citations point to
-    that evidence. A failing source becomes a warning, not a crash.
-  \end{block}
-
-  \vspace{0.3em}
-  \begin{columns}[T,onlytextwidth]
-  \column{0.48\textwidth}
-  \textbf{Inputs}
-  \begin{itemize}
-    \item Question text, up to 2000 characters
-    \item Sources: any of \texttt{wiki}, \texttt{arxiv}, \texttt{web}
-    \item Optional \texttt{-{}-no-cache}; keys and limits from \texttt{.env}
-  \end{itemize}
-
-  \column{0.48\textwidth}
-  \textbf{Outputs}
-  \begin{itemize}
-    \item Answer, references, per-source warnings
-    \item Exit code 0 (answer), 1 (none), 2 (invalid input)
-    \item Source evidence cached in SQLite for 24\,h
-  \end{itemize}
-  \end{columns}
-
-  \vspace{0.4em}
-  \textbf{Entry point:} CLI only, no HTTP server:\enspace
-  {\small\texttt{python -m researcher ask "..." -{}-sources wiki,arxiv,web}}
-\end{frame}
-
-% ========== SLIDE 3: ARCHITECTURE ====================================
-\begin{frame}{Architecture}
-  \textbf{Module map.} The boundary between the \emph{provided} \texttt{ai/} package
-  (red, dashed) and \emph{our} SE layer is shown explicitly.
+\begin{frame}{The problem}
+  \noindent\small\textbf{What the system does.} A user asks a research question; the tool
+  collects evidence from Wikipedia, arXiv and web search at the same time and prints an LLM
+  answer whose numbered citations point to that evidence. A failing source becomes a warning,
+  not a crash.
 
   \vspace{0.2em}
   \begin{center}
-  \includegraphics[width=\textwidth,height=0.72\textheight,keepaspectratio]{architecture.pdf}
+  \begin{tikzpicture}[x=1cm,y=1cm,
+      src/.style={stage, draw=teal, fill=teal!10, minimum width=2.9cm, minimum height=0.6cm},
+      answer/.style={stage, draw=ok, fill=ok!10}]
+    \node[stage] (q) at (0,0) {\faQuestionCircle\ Question\\[-1pt]{\scriptsize CLI, up to 2000 chars}};
+    \node[src] (w) at (4.3,0.75) {\faWikipediaW\ Wikipedia};
+    \node[src] (a) at (4.3,0)    {\faIcon{file-alt}\ arXiv};
+    \node[src] (s) at (4.3,-0.75) {\faSearch\ Web search};
+    \node[stage] (l) at (8.3,0) {\faBrain\ LLM synthesis\\[-1pt]{\scriptsize Gemini}};
+    \node[answer] (r) at (11.7,0) {\faQuoteRight\ Answer\\[-1pt]{\scriptsize with [1], [2], \dots}};
+    \foreach \n in {w,a,s}{\draw[flow] (q.east) -- (\n.west); \draw[flow] (\n.east) -- (l.west);}
+    \draw[flow] (l.east) -- (r.west);
+    \node[font=\scriptsize\itshape, text=teal] at (4.3,1.32) {concurrent, one deadline per source};
+  \end{tikzpicture}
+  \end{center}
+
+  \vspace{0.1em}
+  {\footnotesize
+  \textbf{Inputs:} the question (up to 2000 characters), \texttt{-{}-sources} from \texttt{wiki},
+  \texttt{arxiv}, \texttt{web}, optional \texttt{-{}-no-cache}; keys and limits from \texttt{.env}.\\[3pt]
+  \textbf{Outputs:} answer, numbered references and per-source warnings; exit code 0 (answer),
+  1 (none) or 2 (invalid input).\\[3pt]
+  \textbf{Entry point:} CLI only, no HTTP server:\enspace
+  {\scriptsize\texttt{python -m researcher ask "..." -{}-sources wiki,arxiv,web}}}
+\end{frame}
+
+% ========== SLIDE 3: TECHNOLOGY STACK ================================
+\begin{frame}{Technology stack}
+  \begin{center}
+  \begin{tikzpicture}[x=1cm,y=1cm]
+    \node[pill=accent, anchor=north west] at (0,0)    {BUILD \& RUN};
+    \node[pill=teal,   anchor=north west] at (4.75,0) {CONNECT \& STORE};
+    \node[pill=ok,     anchor=north west] at (9.5,0)  {VERIFY \& SHIP};
+
+    \techcard{0}{0}{accent}{\faPython}{Runtime}{Python 3.12 \textperiodcentered{} asyncio}
+      {gather, timeout, to\_thread}
+    \techcard{0}{1}{accent}{\faLock}{Environment}{uv \textperiodcentered{} uv.lock}
+      {Same versions everywhere}
+    \techcard{0}{2}{accent}{\faSlidersH}{Config \& models}{Pydantic \textperiodcentered{} pydantic-settings}
+      {Typed, self-validating}
+
+    \techcard{1}{0}{teal}{\faNetworkWired}{HTTP}{httpx \textperiodcentered{} RetryingTransport}
+      {Retries in one place}
+    \techcard{1}{1}{teal}{\faDatabase}{Storage}{SQLite (sqlite3)}
+      {No server; survives restarts}
+    \techcard{1}{2}{teal}{\faGlobe}{Providers (\texttt{ai/})}{Wikipedia \textperiodcentered{} arXiv \textperiodcentered{} Tavily}
+      {+ Gemini; chosen by env vars}
+
+    \techcard{2}{0}{ok}{\faVial}{Tests}{pytest \textperiodcentered{} asyncio \textperiodcentered{} cov}
+      {Offline, async, measured}
+    \techcard{2}{1}{ok}{\faIcon{shield-alt}}{Quality gates}{Ruff \textperiodcentered{} Black \textperiodcentered{} isort \textperiodcentered{} mypy}
+      {One style, typed signatures}
+    \techcard{2}{2}{ok}{\faDocker}{Delivery}{GitHub Actions \textperiodcentered{} Docker}
+      {Lint, types, tests per push}
+  \end{tikzpicture}
+  \end{center}
+
+  \vspace{-0.4em}
+  {\scriptsize Everything except the supplied \texttt{ai/} package and its providers is our own code and configuration.}
+\end{frame}
+
+% ========== SLIDE 4: ARCHITECTURE ====================================
+\begin{frame}{Architecture}
+  \textbf{One request, five layers.} The supplied \texttt{ai/} package (dashed) is called only
+  from \texttt{AIService} and was not modified.
+
+  \vspace{0.2em}
+  \begin{center}
+  \includegraphics[width=\textwidth,height=0.66\textheight,keepaspectratio]{architecture.pdf}
   \end{center}
   \vspace{-0.6em}
   {\scriptsize Solid arrows: calls, numbered in request order. Dashed: configuration, local files, output.}
 \end{frame}
 
-% ========== SLIDE 4: TECHNOLOGY STACK ================================
-\begin{frame}{Technology stack}
-  \begin{center}\scriptsize
-  \begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{0.17\linewidth}>{\raggedright\arraybackslash}p{0.36\linewidth}X@{}}
-    \toprule
-    \textbf{Layer} & \textbf{Technology} & \textbf{Why this one} \\
-    \midrule
-    Language, runtime & Python 3.12, \texttt{asyncio} & \texttt{gather}, \texttt{timeout} and \texttt{to\_thread} are in the standard library \\
-    Environment & \texttt{uv} with a locked \texttt{uv.lock} & Same versions locally, in CI and in Docker \\
-    Config, models & \texttt{pydantic-settings}, \texttt{python-dotenv}, Pydantic v2 & Typed settings and self-validating boundary types \\
-    HTTP & \texttt{httpx} async client + our \texttt{RetryingTransport} & One shared client; retries and pacing in one place \\
-    Storage & SQLite (standard \texttt{sqlite3}) & No server to run; the file survives restarts in a volume \\
-    Providers (in \texttt{ai/}) & Wikipedia, arXiv, Tavily, Gemini & Supplied package; chosen by environment variables \\
-    Tests & \texttt{pytest}, \texttt{pytest-asyncio}, \texttt{pytest-cov}, \texttt{MockTransport} & Async tests, offline, with coverage \\
-    Quality gates & Ruff, Black, isort, mypy & One style and typed signatures across four authors \\
-    Delivery & GitHub Actions, multi-stage Docker & Lint, types, tests and an image on every push \\
-    \bottomrule
-  \end{tabularx}
-  \end{center}
-
-  \vspace{0.3em}
-  {\footnotesize Everything except the \texttt{ai/} package and its providers is our own code and configuration.}
-\end{frame}
-
 % ========== SLIDE 5: KEY DESIGN DECISIONS ============================
-\begin{frame}{Three design decisions we can defend}
-  \begin{enumerate}\setlength\itemsep{0.5em}
-    \item \textbf{asyncio over threads, one deadline per source}\\
-      All work is waiting on at most three sources, so one event loop is enough.
-      Rejected: threads, and \texttt{TaskGroup}, which cancels the other sources when one fails.
-    \item \textbf{Protocols and constructor injection around the unchanged \texttt{ai/}}\\
-      Tests swap in fakes without patching. Trade-off accepted: one wiring function
-      (\texttt{run\_ask}) must build everything in the right order.
-    \item \textbf{SQLite cache of source evidence, not of answers}\\
-      Every run still synthesizes; repeated questions skip the network. We would change it
-      for many parallel users (single-file writer) or if answers became expensive.
-  \end{enumerate}
-
-  \vspace{0.5em}
-  \begin{block}{Expect to be asked}
-    ``Why did you not use threads / a semaphore / Redis / an answer cache?''
-    Have a 15-second answer ready for each of the three.
-  \end{block}
+\begin{frame}{Key design decisions}
+  \begin{tikzpicture}[x=1cm,y=1cm]
+    \decision{-0.9}{1}{asyncio over threads, one deadline per source}
+      {All the work is waiting on at most three sources, so one event loop is enough.}
+      {Rejected: threads, and \texttt{TaskGroup}, which cancels the other sources when one fails.}
+    \decision{-3.0}{2}{Protocols and constructor injection around the unchanged \texttt{ai/}}
+      {Tests swap in fakes without patching, and mypy still checks the signatures.}
+      {Trade-off accepted: one wiring function (\texttt{run\_ask}) must build everything in order.}
+    \decision{-5.1}{3}{SQLite cache of source evidence, not of answers}
+      {Every run still synthesizes; repeated questions skip the network.}
+      {We would change it for many parallel users (single-file writer) or if answers became expensive.}
+  \end{tikzpicture}
 \end{frame}
 
 % ========== SLIDE 6: CONCURRENCY (THE BENCHMARK) =====================
-\begin{frame}{Concurrency: the benchmark}
-  \textbf{Workload:} the 5 supplied questions $\times$ all 3 sources, cache off.
+\begin{frame}{Concurrency: sequential vs.\ concurrent}
+  \noindent{\small\textbf{Workload:} the 5 supplied questions $\times$ all 3 sources, cache off.
   Offline: simulated delays 0.1\,/\,0.2\,/\,0.3\,s, median of 5 runs.
-  Live: Wikipedia, arXiv, Tavily, one pair per question.
+  Live: real Wikipedia, arXiv and Tavily requests, one pair per question.\par}
 
   \vspace{0.3em}
-  \begin{center}\small
-  \begin{tabular}{lcc}
+  \begin{columns}[T,onlytextwidth]
+  \column{0.56\textwidth}
+  \footnotesize
+  \begin{tabularx}{\linewidth}{@{}Xcc@{}}
     \toprule
-    & \textbf{Sequential} & \textbf{Concurrent (gather, $\le$3 tasks)} \\
+    & \textbf{Sequential} & \textbf{Concurrent} \\
     \midrule
-    Offline wall-clock (s) & 0.623--0.628 & 0.312--0.314 \\
-    Offline speedup        & 1.0$\times$  & 1.99--2.00$\times$ \\
-    Live wall-clock (s)    & 4.41--7.04   & 3.62--5.60 \\
-    Live speedup (q1--q5)  & 1.0$\times$  & 0.79--1.82$\times$ \\
+    Offline wall-clock (s)      & 0.623--0.628 & 0.312--0.314 \\
+    Offline speedup             & 1.0$\times$  & 1.99--2.00$\times$ \\
+    Live wall-clock (s)         & 4.41--7.04   & 3.62--5.60 \\
+    Live speedup (q1--q5)       & 1.0$\times$  & 0.79--1.82$\times$ \\
+    Provider 429s observed      & 0 & 0 \\
     Failed or timed-out sources & 0 & 0 \\
     \bottomrule
-  \end{tabular}
-  \end{center}
+  \end{tabularx}
+
+  \column{0.42\textwidth}
+  \begin{tikzpicture}[x=1cm,y=1.2cm]
+    \node[font=\scriptsize\bfseries, anchor=south] at (2.55,2.15) {Live speedup per question};
+    \draw[black!40] (0,0) -- (5.1,0);
+    \draw[dashed, black!50] (0,1) -- (5.1,1);
+    \node[font=\tiny, anchor=east, text=black!60] at (-0.05,1) {1$\times$};
+    \foreach \i/\v/\c in {0/1.66/teal, 1/0.79/amber, 2/1.80/teal, 3/1.05/teal, 4/1.82/teal}{
+      \fill[\c] (0.2+\i*1.0,0) rectangle (0.8+\i*1.0,\v);
+      \node[font=\tiny\bfseries, anchor=north, text=white] at (0.5+\i*1.0,\v-0.04) {\v$\times$};
+      \node[font=\tiny, anchor=north] at (0.5+\i*1.0,0) {q\the\numexpr\i+1\relax};
+    }
+  \end{tikzpicture}
+  \end{columns}
 
   \vspace{0.3em}
-  \textbf{Bottleneck named:} the slowest source sets the concurrent time (0.3\,s offline);
-  live, network latency and arXiv's 3\,s request spacing.\\
-  \textbf{What didn't reach $N\times$:} with unequal delays the ideal is 2$\times$, not 3$\times$;
-  live, q2 was slower concurrently and Wikipedia found nothing for full questions.
-
-  \vspace{0.2em}
-  {\footnotesize\textit{Reproduce (README):} \texttt{uv run python benchmarks/benchmark\_sources.py -{}-repeats 5}}
+  {\footnotesize\textbf{Bottleneck:} the slowest source sets the concurrent time (0.3\,s offline);
+  live, network latency and arXiv's 3\,s request spacing.\\[2pt]
+  \textbf{Why not $3\times$:} with unequal delays the ideal is $2\times$
+  (sum\,/\,max = 0.6\,/\,0.3); live, q2 was slower concurrently and Wikipedia found nothing for
+  full questions.\\[2pt]
+  \textit{Reproduce:} \texttt{uv run python benchmarks/benchmark\_sources.py -{}-repeats 5}}
 \end{frame}
 
 % ========== SLIDE 7: ROBUSTNESS STORY ================================
-\begin{frame}{Robustness: one concrete failure mode}
-  \textbf{Scenario:} in a live run with all three sources, arXiv timed out.
-
-  \vspace{0.3em}
-  \textbf{How we surfaced it:} manual live CLI run; reproduced offline in
-  \texttt{test\_deadline\_cancels\_slow\_fetch\_and\_preserves\_success}.
-
-  \vspace{0.3em}
-  \textbf{What the system does:}
-  \begin{itemize}\setlength\itemsep{0.25em}
-    \item \textbf{Retry:} up to 3 attempts, 0.5\,s growing to 4\,s, only for timeouts, 408, 429
-      and 5xx; \texttt{Retry-After} honoured; one 10\,s deadline per source.
-    \item \textbf{Validate:} input and settings checked before any call (exit 2);
-      models reject unknown fields; cached rows re-validated on read.
-    \item \textbf{Log:} \texttt{source timeout: source=arxiv stage=... deadline\_expired=...};
-      failures log the error type only, no keys or messages.
-    \item \textbf{Degrade:} Wikipedia's evidence was kept and the answer was printed with an
-      arXiv warning; exit code 0.
-  \end{itemize}
+\begin{frame}{Robustness: when a source fails}
+  \noindent{\small\textbf{Scenario:} in a live run with all three sources, arXiv timed out.
+  \textbf{Found by:} a manual live CLI run, reproduced offline in
+  \texttt{test\_deadline\_cancels\_slow\_fetch\_and\_preserves\_success}.\par}
 
   \vspace{0.2em}
+  \begin{center}
+  \begin{tikzpicture}[x=1cm,y=1cm]
+    \robustcard{0}{0}{accent}{\faRedo}{Retry}
+      {Up to 3 attempts, 0.5\,s growing to 4\,s; only timeouts, 408, 429 and 5xx are retried;
+      \texttt{Retry-After} is honoured; one 10\,s deadline per source.}
+    \robustcard{7.1}{0}{teal}{\faCheckCircle}{Validate}
+      {Input and settings are checked before any call (exit 2); models reject unknown
+      fields; cached rows are re-validated on read.}
+    \robustcard{0}{-2.8}{amber}{\faClipboardList}{Log}
+      {\texttt{source timeout: source=arxiv stage=...} Failures log the error type only,
+      never keys or messages.}
+    \robustcard{7.1}{-2.8}{ok}{\faLifeRing}{Degrade}
+      {Wikipedia's evidence was kept and the answer was printed with an arXiv warning;
+      exit code 0.}
+  \end{tikzpicture}
+  \end{center}
+
+  \vspace{-0.3em}
   {\footnotesize Also seen live: intermittent Gemini 503 (high demand); later calls succeeded.}
 \end{frame}
 
-% ========== SLIDE 8: CACHE EVIDENCE (added) ==========================
+% ========== SLIDE 8: CACHE EVIDENCE ==================================
 \begin{frame}{Caching: measured, not assumed}
   \begin{columns}[T,onlytextwidth]
-  \column{0.52\textwidth}
+  \column{0.55\textwidth}
   \textbf{Schema and policy}
-  \begin{itemize}\setlength\itemsep{0.2em}
+  \begin{itemize}\small\setlength\itemsep{0.3em}
     \item Table \texttt{cache\_entries}: key \texttt{(source, query\_key)}, its automatic
       unique index, JSON \texttt{payload}; no foreign keys
     \item Key = source + normalised question; TTL 24\,h
@@ -297,130 +373,128 @@
     \item \texttt{-{}-no-cache} never opens the SQLite file
   \end{itemize}
 
-  \column{0.44\textwidth}
-  \textbf{Hit rate} = hits / lookups
-  \begin{center}\small
-  \begin{tabular}{lr}
-    \toprule
-    First run  & 0 / 15 \\
-    Second run & 15 / 15 \\
-    \textbf{Combined} & \textbf{15 / 30 = 50\%} \\
-    \bottomrule
-  \end{tabular}
-  \end{center}
-  {\footnotesize 5 questions $\times$ 3 sources through the real CLI; providers simulated;
-  an answer synthesized on every run.}
+  \column{0.42\textwidth}
+  \textbf{Hit rate} = hits\,/\,lookups
+  \vspace{0.4em}
+
+  \begin{tikzpicture}[x=1cm,y=1cm]
+    \statTile{0}{1.85}{amber}{\large}{0\,/\,15}{first run}
+    \statTile{1.98}{1.85}{teal}{\large}{15\,/\,15}{second run}
+    \statTile{3.96}{1.85}{accent}{\large}{50\%}{combined, 15\,/\,30}
+  \end{tikzpicture}
+  \vspace{0.3em}
+
+  {\scriptsize 5 questions $\times$ 3 sources through the real CLI; providers simulated;
+  an answer is synthesized on every run.}
   \end{columns}
 
-  \vspace{0.4em}
+  \vspace{0.6em}
   \textbf{Staleness:} empty results are also kept for 24\,h, and the key ignores provider settings.
 
-  \vspace{0.2em}
+  \vspace{0.3em}
   {\footnotesize\textit{Reproduce:} \texttt{uv run python tests/cache\_verification.py}
   \enspace\textit{(docs/cache-verification.md)}}
 \end{frame}
 
 % ========== SLIDE 9: DEMO ============================================
-\begin{frame}[fragile]{Live demo (or scripted demo)}
+\begin{frame}[fragile]{Live demo}
   \begin{block}{What we will run}
     One question against all three sources, twice, with a cache volume: the second run is
     served from SQLite and still produces an answer.
   \end{block}
 
-  \vspace{0.2em}
-  \textbf{Demo command (works inside Docker):}
+  \vspace{0.3em}
+  \textbf{Command (runs inside Docker):}
 \begin{lstlisting}[style=shell]
 docker run --rm --env-file .env --env DATABASE_URL= `
   -v research-assistant-cache:/home/appuser/.cache/research-assistant `
   research-assistant:runtime ask "Photovoltaic effect" --sources wiki,arxiv,web
 \end{lstlisting}
 
-  \begin{itemize}\setlength\itemsep{0.15em}
+  \vspace{0.3em}
+  \begin{itemize}\small\setlength\itemsep{0.3em}
     \item On screen: numbered references from all three sources; on the second run,
       \texttt{cache\_hit=True} in the log.
     \item Timing: in a live container run the sources took 2.39, 3.53 and 0.53\,s, yet
       collection finished in 3.64\,s instead of 6.45\,s.
   \end{itemize}
-
-  \vspace{0.1em}
-  {\footnotesize\textit{Backup: pre-recorded screencast, then the offline run
-  \texttt{uv run python tests/cache\_verification.py}.}}
 \end{frame}
 
 % ========== SLIDE 10: TESTING =========================================
 \begin{frame}{Testing}
-  \begin{columns}[T,onlytextwidth]
-  \column{0.44\textwidth}
-  \textbf{Coverage \& shape}
-  \begin{itemize}\setlength\itemsep{0.3em}
-    \item Total coverage: \coveragepct\,\%
-    \item Provided \texttt{ai/} smoke tests: \textcolor{ok}{\textbf{passing}}
-    \item Test count: \owntests{} own + \smoketests{} smoke
-    \item All tests offline; AI module fully mocked
-  \end{itemize}
+  \begin{center}
+  \begin{tikzpicture}[x=1cm,y=1cm]
+    \statTile{0}{3.3}{accent}{\LARGE}{\owntests}{own tests}
+    \statTile{3.57}{3.3}{ok}{\LARGE}{\smoketests}{provided smoke tests, passing}
+    \statTile{7.14}{3.3}{teal}{\LARGE}{\coveragepct\,\%}{coverage of \texttt{src/researcher}}
+    \statTile{10.71}{3.3}{accent}{\LARGE}{0}{mypy issues in 15 source files}
+  \end{tikzpicture}
+  \end{center}
 
-  \column{0.53\textwidth}
-  \textbf{Three tests worth calling out}
-  \begin{itemize}\setlength\itemsep{0.3em}
+  \vspace{0.2em}
+  \textbf{Key tests}
+  \begin{itemize}\small\setlength\itemsep{0.3em}
     \item \textbf{Happy path:} the real CLI answers each supplied question, reuses SQLite,
       then honours \texttt{-{}-no-cache}.
-    \item \textbf{Concurrency:} arXiv raises, gather degrades; Wikipedia and web evidence kept.
-    \item \textbf{Error path:} HTTP 408/429/500/503 is retried once, then succeeds;
-      every response is closed.
+    \item \textbf{Concurrency:} arXiv raises, \texttt{gather} degrades; Wikipedia and web
+      evidence are kept.
+    \item \textbf{Error path:} HTTP 408/429/500/503 is retried, then succeeds; every response
+      is closed.
   \end{itemize}
-  \end{columns}
 
-  \vspace{0.6em}
+  \vspace{0.2em}
   \begin{block}{Tooling}
-    \texttt{pytest} + \texttt{pytest-asyncio} + \texttt{pytest-cov} + \texttt{httpx.MockTransport}.
-    mypy: no issues in 15 source files; Ruff, Black and isort clean in CI.
+    \small\texttt{pytest} + \texttt{pytest-asyncio} + \texttt{pytest-cov} + \texttt{httpx.MockTransport};
+    all tests run offline with the AI module mocked. Ruff, Black and isort are clean in CI.
   \end{block}
 \end{frame}
 
 % ========== SLIDE 11: LIMITATIONS + FUTURE ===========================
-\begin{frame}{Limitations \& what we'd do next}
-  \textbf{Where the system is brittle today}
-  \begin{itemize}\setlength\itemsep{0.3em}
+\begin{frame}{Limitations \& next steps}
+  \begin{columns}[T,onlytextwidth]
+  \column{0.48\textwidth}
+  {\large\bfseries\color{amber}Where the system is brittle}
+  \begin{itemize}\setlength\itemsep{0.5em}
     \item Full questions often find no Wikipedia match; there is no query rewriting.
     \item No fallback LLM: if Gemini is down, we show evidence but no answer.
-    \item The cache keeps empty results for 24\,h, ignores provider settings, and never evicts rows.
+    \item The cache keeps empty results for 24\,h, ignores provider settings, and never
+      evicts rows.
   \end{itemize}
 
-  \vspace{0.4em}
-  \textbf{Given another week we would}
-  \begin{enumerate}\setlength\itemsep{0.3em}
+  \column{0.48\textwidth}
+  {\large\bfseries\color{ok}With another week}
+  \begin{enumerate}\setlength\itemsep{0.5em}
     \item Turn the question into a short topic query before searching Wikipedia.
-    \item Add a settings fingerprint to the cache key, a shorter TTL for empty results, and a purge command.
+    \item Add a settings fingerprint to the cache key, a shorter TTL for empty results, and a
+      purge command.
     \item Repeat the live benchmark at least three times and compare distributions.
   \end{enumerate}
+  \end{columns}
 \end{frame}
 
 % ========== SLIDE 12: TEAM CONTRIBUTIONS =============================
 \begin{frame}{Team contributions}
   \begin{center}\footnotesize
-  \begin{tabularx}{\linewidth}{lXl}
+  \begin{tabularx}{\linewidth}{@{}>{\bfseries}lXr@{}}
     \toprule
-    \textbf{Member} & \textbf{Primary ownership} & \textbf{Commits} \\
+    Member & Primary ownership & Commits \\
     \midrule
-    \memberone   & Settings, models, interfaces, orchestrator, retry transport, arXiv pacing; merges and release & \commitsone \\
-    \membertwo   & AIService around \texttt{ai/}; engineering audit, tests, Docker and provider docs & \commitstwo \\
-    \memberthree & SourceCache and SQLite store; architecture diagram, cache verification, slides, demo & \commitsthree \\
-    \memberfour  & CLI and Researcher; report, README, contribution statement & \commitsfour \\
+    \memberone   & Settings, models, interfaces, orchestrator, retry transport, arXiv pacing; merges and release & \sharebar{\pctone}\enspace\cntone\ (\pctone\%) \\[3pt]
+    \membertwo   & AIService around \texttt{ai/}; engineering audit, tests, Docker and provider docs & \sharebar{\pcttwo}\enspace\cnttwo\ (\pcttwo\%) \\[3pt]
+    \memberthree & SourceCache and SQLite store; architecture diagram, cache verification, slides, demo & \sharebar{\pctthree}\enspace\cntthree\ (\pctthree\%) \\[3pt]
+    \memberfour  & CLI and Researcher; report, README, contribution statement & \sharebar{\pctfour}\enspace\cntfour\ (\pctfour\%) \\
     \bottomrule
   \end{tabularx}
   \end{center}
-  \vspace{-0.4em}
-  {\scriptsize Commits on \texttt{main}, \commitdate{}, \committotal{} in total, author aliases merged.
-  Final shares: signed contribution statement.}
+  \vspace{-0.3em}
+  {\scriptsize Non-merge commits on \texttt{main}, \commitdate{}: \committotal{} in total, author aliases merged.
+  Per-file ownership: signed contribution statement.}
 
-  \vspace{0.4em}
-  \begin{block}{We can all answer:}
-    Any of us can walk through any module on demand. Pick a file --- we'll defend it.
+  \vspace{0.6em}
+  \begin{block}{AI assistance}
+    \small Claude and OpenAI Codex were used; each module's use, and what we changed, is
+    disclosed in report \S9 and in the signed contribution statement.
   \end{block}
-
-  \vspace{0.3em}
-  {\small\textbf{AI tool use:} disclosed per member in the contribution statement; e.g.\ Claude
-  drafted Samur's architecture figure, cache tests and this deck, which Samur reviewed and ran.}
 \end{frame}
 
 % ========== SLIDE 13: THANK YOU / Q&A ================================
@@ -432,8 +506,9 @@ docker run --rm --env-file .env --env DATABASE_URL= `
     {\Huge\bfseries\color{accent} Questions?}\\[1.2em]
     \rule{0.5\textwidth}{0.6pt}\\[1.2em]
     {\large \teamname}\\[0.6em]
+    {\normalsize \memberone\quad\textbullet\quad\membertwo\quad\textbullet\quad\memberthree\quad\textbullet\quad\memberfour}\\[0.8em]
     {\small \texttt{\repolink}}\\[1cm]
-    {\footnotesize\itshape ``We can walk through any file in the repo.''}
+    {\footnotesize\itshape Thank you.}
   \end{center}
 \end{frame}
 }
